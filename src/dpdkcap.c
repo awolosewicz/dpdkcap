@@ -1,370 +1,278 @@
-#include <stdint.h>
-#include <stdbool.h>
 #include <signal.h>
 #include <argp.h>
-#include <inttypes.h>
+#include <sys/sysmacros.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
 
-#include <rte_common.h>
-#include <rte_log.h>
-#include <rte_memcpy.h>
+#include <rte_malloc.h>
 #include <rte_ethdev.h>
-#include <rte_errno.h>
 #include <rte_string_fns.h>
 
-#include "pcap.h"
 #include "core_write.h"
 #include "core_capture.h"
-#include "statistics.h"
+#include "nic.h"
+#include "pcap.h"
+#include "stats.h"
+#include "utils.h"
 
-#define STR1(x)  #x
-#define STR(x)  STR1(x)
+#define RX_DESC_DEFAULT 1024
+#define MBUF_CACHE_SIZE 512
 
-#define RX_DESC_DEFAULT 512
+#define BURST_SIZE_DEFAULT 128
+#define NUM_MBUFS_DEFAULT 65536
 
-#define NUM_MBUFS_DEFAULT 8192
-#define MBUF_CACHE_SIZE 256
+#define PAUSE_BURST_SIZE 128
+#define PAUSE_MBUF_POOL_SIZE 8192
+
+#define PCAP_SNAPLEN_DEFAULT 32768
+
+#define PCAP_BUF_LEN_DEFAULT 1024 * 1024 * 128
+#define NUM_PBUFS_DEFAULT 4
 
 #define MAX_LCORES 1000
 
-#define DPDKCAP_OUTPUT_TEMPLATE_TOKEN_FILECOUNT "\%FCOUNT"
-#define DPDKCAP_OUTPUT_TEMPLATE_TOKEN_CORE_ID   "\%COREID"
-#define DPDKCAP_OUTPUT_TEMPLATE_DEFAULT "output_" \
-  DPDKCAP_OUTPUT_TEMPLATE_TOKEN_CORE_ID
+#define DISK_BLK_SIZE 4096
 
-#define DPDKCAP_OUTPUT_TEMPLATE_LENGTH 2 * DPDKCAP_OUTPUT_FILENAME_LENGTH
+#define OUTPUT_TEMPLATE_TOKEN_FILECOUNT "\%FCOUNT"
+#define OUTPUT_TEMPLATE_TOKEN_CORE_ID   "\%COREID"
+#define OUTPUT_TEMPLATE_DEFAULT "output_" \
+    OUTPUT_TEMPLATE_TOKEN_CORE_ID
 
-#define RTE_LOGTYPE_DPDKCAP RTE_LOGTYPE_USER1
+#define OUTPUT_TEMPLATE_LENGTH 2 * OUTPUT_FILENAME_LENGTH
 
 /* ARGP */
 const char *argp_program_version = "dpdkcap 1.1";
-const char *argp_program_bug_address = "w.b.devries@utwente.nl";
 static char doc[] = "A DPDK-based packet capture tool";
 static char args_doc[] = "";
+
 static struct argp_option options[] = {
-  { "output", 'o', "FILE", 0, "Output FILE template (don't add the "\
-    "extension). Use \""DPDKCAP_OUTPUT_TEMPLATE_TOKEN_CORE_ID"\" for "\
-      "inserting the lcore id into the file name (automatically added if not "\
-      "used). (default: "DPDKCAP_OUTPUT_TEMPLATE_DEFAULT")"
-      , 0 },
-  { "statistics", 'S', 0, 0, "Print statistics every few seconds.", 0 },
-  { "num-mbuf", 'm', "NB_MBUF", 0, "Total number of memory buffer used to "\
-    "store the packets. Optimal values, in terms of memory usage, are powers "\
-      "of 2 minus 1 (2^q-1) (default: "STR(NUM_MBUFS_DEFAULT)")", 0 },
-  { "per_port_c_cores", 'c', "NB_CORES_PER_PORT", 0, "Number of cores per " \
-    "port used for capture (default: 1)", 0 },
-  { "num_w_cores", 'w', "NB_CORES", 0, "Total number of cores used for "\
-    "writing (default: 1).", 0 },
-  { "rx_desc", 'd', "RX_DESC_MATRIX", 0, "This option can be used to "\
-    "override the default number of RX descriptors configured for all queues "\
-      "of each port ("STR(RX_DESC_DEFAULT)"). RX_DESC_MATRIX can have "\
-      "multiple formats:\n"\
-      "- A single positive value, which will simply replace the default "\
-      " number of RX descriptors,\n"\
-      "- A list of key-values, assigning a configured number of RX "\
-      "descriptors to the given port(s). Format: \n"\
-      "  <matrix>   := <key>.<nb_rx_desc> { \",\" <key>.<nb_rx_desc> \",\" "\
-      "...\n"\
-      "  <key>      := { <interval> | <port> }\n"\
-      "  <interval> := <lower_port> \"-\" <upper_port>\n"\
-      "  Examples: \n"\
-      "  512               - all ports have 512 RX desc per queue\n"\
-      "  0.256, 1.512      - port 0 has 256 RX desc per queue,\n"\
-      "                      port 1 has 512 RX desc per queue\n"\
-      "  0-2.256, 3.1024   - ports 0, 1 and 2 have 256 RX desc per "\
-      " queue,\n"\
-      "                      port 3 has 1024 RX desc per queue."
-      , 0 },
-  { "rotate_seconds", 'G', "T", 0, "Create a new set of files every T "\
-    "seconds. Use strftime formats within the output file template to rename "\
-      "each file accordingly.", 0},
-  { "limit_file_size", 'C', "SIZE", 0, "Before writing a packet, check "\
-    "whether the target file excess SIZE bytes. If so, creates a new file. " \
-      "Use \""DPDKCAP_OUTPUT_TEMPLATE_TOKEN_FILECOUNT"\" within the output "\
-      "file template to index each new file.", 0},
-  { "portmask", 'p', "PORTMASK", 0, "Ethernet ports mask (default: 0x1).", 0 },
-  { "snaplen", 's', "LENGTH", 0, "Snap the capture to snaplen bytes "\
-    "(default: 65535).", 0 },
-  { "logs", 700, "FILE", 0, "Writes the logs into FILE instead of "\
-    "stderr.", 0 },
-  { "no-compression", 701, 0, 0, "Do not compress capture files.", 0 },
-  { 0 } };
+    { "output", 'w', "FILE", 0, "Output FILE template (don't add the "\
+        "extension). Use \""OUTPUT_TEMPLATE_TOKEN_CORE_ID"\" for "\
+            "inserting the lcore id into the file name (automatically added if not "\
+            "used). (default: "OUTPUT_TEMPLATE_DEFAULT")", 0 },
+    { "stats", 'S', 0, 0, "Print stats every few seconds.", 0 },
+    { "nb-mbuf", 'm', "NB_MBUF", 0, "Number of memory buffers per core per port "\
+        "used to store the DMA'd packets by the nic driver. Optimal values, "\
+            "are powers of 2 (2^q) (default: "STR(NUM_MBUFS_DEFAULT)")", 0 },
+    { "mbuf_len", 'i', "MBUF_LEN", 0, "Size (in bytes) of each MBUF (packet buffer). "\
+        "Recommened value is 2KB + RTE_PKTMBUF_HEADROOM (default: "STR(RTE_MBUF_DEFAULT_BUF_SIZE)")", 0 },
+    { "nb_pbuf", 'n', "NB_PBUF", 0, "Number of memory buffers per core per port "\
+        "used to store received packets before being flushed to disk. Optimal values, "\
+            "are powers of 2 (2^q) (default: "STR(NUM_PBUFS_DEFAULT)")", 0 },
+    { "pbuf_len", 'j', "PBUF_LEN", 0, "Size (in bytes) of each PBUF (pcap buffer). "\
+        "Optimal values, are powers of 2 (2^q) (default: "STR(PCAP_BUF_LEN_DEFAULT)")", 0 },
+    { "nb_queues_per_port", 'q', "QUEUES_PER_PORT", 0, "Number of queues per port (default: 1)", 0 },
+    { "rx_desc", 'd', "DESC_MATRIX", 0, "This option can be used to "\
+        "override the default number of RX descriptors configured for all queues "\
+            "of each port ("STR(RX_DESC_DEFAULT)"). RX_DESC_MATRIX can have "\
+            "multiple formats:\n"\
+            "- A single positive value, which will simply replace the default "\
+            " number of RX descriptors,\n"\
+            "- A list of key-values, assigning a configured number of RX "\
+            "descriptors to the given port(s). Format: \n"\
+            "  <matrix>   := <key>.<nb_rx_desc> { \",\" <key>.<nb_rx_desc> \",\" "\
+            "...\n"\
+            "  <key>      := { <interval> | <port> }\n"\
+            "  <interval> := <lower_port> \"-\" <upper_port>\n"\
+            "  Examples: \n"\
+            "  512               - all ports have 512 RX desc per queue\n"\
+            "  0.256, 1.512      - port 0 has 256 RX desc per queue,\n"\
+            "                      port 1 has 512 RX desc per queue\n"\
+            "  0-2.256, 3.1024   - ports 0, 1 and 2 have 256 RX desc per "\
+            " queue,\n"\
+            "                      port 3 has 1024 RX desc per queue."
+            , 0 },
+    { "burst_size", 'b', "NUM", 0, "Size of receive burst (default: "STR(BURST_SIZE_DEFAULT)")", 0 },
+    { "rotate_seconds", 'r', "SECS", 0, "Create a new set of files every T "\
+        "seconds. Use strftime formats within the output file template to rename "\
+            "each file accordingly.", 0},
+    { "file_size_limit", 'f', "SIZE", 0, "Before writing a packet, check "\
+        "whether the target file excess SIZE bytes. If so, creates a new file. " \
+            "Use \""OUTPUT_TEMPLATE_TOKEN_FILECOUNT"\" within the output "\
+            "file template to index each new file.", 0},
+    { "portmask", 'p', "PORTMASK", 0, "Ethernet ports mask (default: 0x1).", 0 },
+    { "snaplen", 's', "LENGTH", 0, "Snap the capture to snaplen bytes "\
+        "(default: 65535).", 0 },
+    { "flow-control", 'z', 0, 0, "Enable flow control.", 0 },
+    { "logs", 700, "FILE", 0, "Writes the logs into FILE instead of "\
+        "stderr.", 0 },
+    { 0 } };
 
 struct arguments {
-  char* args[2];
-  char output_file_template[DPDKCAP_OUTPUT_FILENAME_LENGTH];
-  uint64_t portmask;
-  int statistics;
-  unsigned long nb_mbufs;
-  char * num_rx_desc_str_matrix;
-  unsigned long per_port_c_cores;
-  unsigned long num_w_cores;
-  int no_compression;
-  unsigned long snaplen;
-  unsigned long rotate_seconds;
-  uint64_t file_size_limit;
-  char * log_file;
-};
+    int stats;
+    uint16_t * port_list;
+    uint16_t burst_size;
+    uint16_t pause_burst_size;
+    uint16_t disk_blk_size;
+    uint16_t nb_queues_per_port;
+    uint16_t flow_control;
+    uint16_t snaplen;
+    uint32_t nb_mbufs;
+    uint32_t mbuf_len;
+    uint32_t nb_pbufs;
+    uint32_t pbuf_len;
+    uint64_t portmask;
+    uint64_t rotate_seconds;
+    uint64_t file_size_limit;
+    char * output_file_template;
+    char * log_file;
+    char * num_rx_desc_str_matrix;
+} __rte_cache_aligned;
 
 static int parse_matrix_opt(char * arg, unsigned long * matrix,
-    unsigned long max_len) {
-  char * comma_tokens [100];
-  int nb_comma_tokens;
-  char * dot_tokens [3];
-  int nb_dot_tokens;
-  char * dash_tokens [3];
-  int nb_dash_tokens;
+        unsigned long max_len) {
+    char * comma_tokens [100];
+    int nb_comma_tokens;
+    char * dot_tokens [3];
+    int nb_dot_tokens;
+    char * dash_tokens [3];
+    int nb_dash_tokens;
 
-  char * end;
+    char * end;
 
-  unsigned long left_key;
-  unsigned long right_key;
-  unsigned long  value;
+    unsigned long left_key;
+    unsigned long right_key;
+    unsigned long  value;
 
-  nb_comma_tokens = rte_strsplit(arg, strlen(arg), comma_tokens, 100, ',');
-  // Case with a single value
-  if(nb_comma_tokens == 1 && strchr(arg, '.') == NULL) {
-    errno = 0;
-    value = strtoul(arg, &end, 10);
-    if(errno||*end!='\0') return -EINVAL;
-    for(unsigned long key=0; key<max_len; key++) {
-      matrix[key] = value;
+    nb_comma_tokens = rte_strsplit(arg, strlen(arg), comma_tokens, 100, ',');
+    // Case with a single value
+    if(nb_comma_tokens == 1 && strchr(arg, '.') == NULL) {
+        errno = 0;
+        value = strtoul(arg, &end, 10);
+        if(errno||*end!='\0') return -EINVAL;
+        for(unsigned long key=0; key<max_len; key++) {
+            matrix[key] = value;
+        }
+        return 0;
+    }
+
+    // Key-value matrix
+    if (nb_comma_tokens > 0) {
+        for(int comma=0; comma < nb_comma_tokens; comma++) {
+            // Split between left and right side of the dot
+            nb_dot_tokens = rte_strsplit(comma_tokens[comma],
+                    strlen(comma_tokens[comma]), dot_tokens, 3, '.');
+            if(nb_dot_tokens != 2)
+                return -EINVAL;
+
+            // Handle value
+            errno = 0;
+            value = strtoul(dot_tokens[1], &end, 10);
+            if(errno||*end!='\0') return -EINVAL;
+
+            // Handle key
+            nb_dash_tokens = rte_strsplit(dot_tokens[0],
+                    strlen(dot_tokens[0]), dash_tokens, 3, '-');
+            if(nb_dash_tokens == 1) {
+                // Single value
+                left_key = strtoul(dash_tokens[0], &end, 10);
+                if(errno||*end!='\0') return -EINVAL;
+                right_key = left_key;
+            } else if (nb_dash_tokens == 2) {
+                // Interval value
+                left_key =  strtoul(dash_tokens[0], &end, 10);
+                if(errno||*end!='\0') return -EINVAL;
+                right_key = strtoul(dash_tokens[1], &end, 10);
+                if(errno||*end!='\0') return -EINVAL;
+            } else {
+                return -EINVAL;
+            }
+
+            // Fill-in the matrix
+            if (right_key < max_len && right_key >= left_key) {
+                for (unsigned long key = left_key; key <= right_key; key ++) {
+                    matrix[key] = value;
+                }
+            } else {
+                return -EINVAL;
+            }
+        }
+    } else {
+        return -EINVAL;
     }
     return 0;
-  }
-
-  // Key-value matrix
-  if (nb_comma_tokens > 0) {
-    for(int comma=0; comma < nb_comma_tokens; comma++) {
-      // Split between left and right side of the dot
-      nb_dot_tokens = rte_strsplit(comma_tokens[comma],
-          strlen(comma_tokens[comma]), dot_tokens, 3, '.');
-      if(nb_dot_tokens != 2)
-        return -EINVAL;
-
-      // Handle value
-      errno = 0;
-      value = strtoul(dot_tokens[1], &end, 10);
-      if(errno||*end!='\0') return -EINVAL;
-
-      // Handle key
-      nb_dash_tokens = rte_strsplit(dot_tokens[0],
-          strlen(dot_tokens[0]), dash_tokens, 3, '-');
-      if(nb_dash_tokens == 1) {
-        // Single value
-        left_key = strtoul(dash_tokens[0], &end, 10);
-        if(errno||*end!='\0') return -EINVAL;
-        right_key = left_key;
-      } else if (nb_dash_tokens == 2) {
-        // Interval value
-        left_key =  strtoul(dash_tokens[0], &end, 10);
-        if(errno||*end!='\0') return -EINVAL;
-        right_key = strtoul(dash_tokens[1], &end, 10);
-        if(errno||*end!='\0') return -EINVAL;
-      } else {
-        return -EINVAL;
-      }
-
-      // Fill-in the matrix
-      if (right_key < max_len && right_key >= left_key) {
-        for (unsigned long key = left_key; key <= right_key; key ++) {
-          matrix[key] = value;
-        }
-      } else {
-        return -EINVAL;
-      }
-    }
-  } else {
-   return -EINVAL;
-  }
-  return 0;
 }
-
 
 static error_t parse_opt(int key, char* arg, struct argp_state *state) {
-  struct arguments* arguments = state->input;
-  char *end;
+    struct arguments* args = state->input;
+    char *end;
 
-  errno = 0;
-  end = NULL;
-  switch (key) {
-    case 'p':
-      /* parse hexadecimal string */
-      arguments->portmask = strtoul(arg, &end, 16);
-      if (arguments->portmask == 0) {
-        RTE_LOG(ERR, DPDKCAP, "Invalid portmask '%s', no port used\n", arg);
+    errno = 0;
+    end = NULL;
+    switch (key) {
+        case 'p':
+            /* parse hexadecimal string */
+            args->portmask = strtoul(arg, &end, 16);
+            if (args->portmask == 0) {
+                LOG_ERR("Invalid portmask '%s', no port used\n", arg);
+                return -EINVAL;
+            }
+            break;
+        case 'w':
+            strncpy(args->output_file_template, arg, OUTPUT_FILENAME_LENGTH);
+            break;
+        case 'S':
+            args->stats = 1;
+            break;
+        case 'm':
+            args->nb_mbufs = strtoul(arg, &end, 10);
+            break;
+        case 'i':
+            args->mbuf_len = strtoul(arg, &end, 10);
+            break;
+        case 'n':
+            args->nb_pbufs = strtoul(arg, &end, 10);
+            break;
+        case 'j':
+            args->pbuf_len = strtoul(arg, &end, 10);
+            break;
+        case 'b':
+            args->burst_size = strtoul(arg, &end, 10);
+            break;
+        case 'd':
+            args->num_rx_desc_str_matrix = arg;
+            break;
+        case 'q':
+            args->nb_queues_per_port = strtoul(arg, &end, 10);
+            break;
+        case 's':
+            args->snaplen = strtoul(arg, &end, 10);
+            break;
+        case 'r':
+            args->rotate_seconds = strtoul(arg, &end, 10);
+            break;
+        case 'f':
+            args->file_size_limit = strtoll(arg, &end, 10);
+            break;
+        case 'z':
+            args->flow_control = 1;
+            break;
+        case 700:
+            args->log_file = arg;
+            break;
+        default:
+            return ARGP_ERR_UNKNOWN;
+    }
+    if(errno||(end != NULL && *end != '\0')) {
+        LOG_ERR("Invalid value '%s'\n", arg);
         return -EINVAL;
-      }
-      break;
-    case 'o':
-      strncpy(arguments->output_file_template,arg,
-          DPDKCAP_OUTPUT_FILENAME_LENGTH);
-      break;
-    case 'S':
-      arguments->statistics = 1;
-      break;
-    case 'm':
-      arguments->nb_mbufs = strtoul(arg, &end, 10);
-      break;
-    case 'd':
-      arguments->num_rx_desc_str_matrix = arg;
-      break;
-    case 'c':
-      arguments->per_port_c_cores = strtoul(arg, &end, 10);
-      break;
-    case 'w':
-      arguments->num_w_cores = strtoul(arg, &end, 10);
-      break;
-    case 's':
-      arguments->snaplen = strtoul(arg, &end, 10);
-      break;
-    case 'G':
-      arguments->rotate_seconds = strtoul(arg, &end, 10);
-      break;
-    case 'C':
-      arguments->file_size_limit = strtoll(arg, &end, 10);
-      break;
-    case 700:
-      arguments->log_file = arg;
-      break;
-    case 701:
-      arguments->no_compression = 1;
-      break;
-    default:
-      return ARGP_ERR_UNKNOWN;
-  }
-  if(errno||(end != NULL && *end != '\0')) {
-    RTE_LOG(ERR, DPDKCAP, "Invalid value '%s'\n", arg);
-    return -EINVAL;
-  }
-  return 0;
+    }
+    return 0;
 }
+
 static struct argp argp = { options, parse_opt, args_doc, doc, 0, 0, 0 };
 /* END OF ARGP */
-
-static struct rte_ring *write_ring;
-
-struct arguments arguments;
-
-static unsigned int portlist[64];
-static unsigned int nb_ports;
-
-static struct core_write_stats * cores_stats_write_list;
-static struct core_capture_stats* cores_stats_capture_list;
-
-static const struct rte_eth_conf port_conf_default = {
-  .rxmode = {
-    .mq_mode = ETH_MQ_RX_NONE,
-    .max_rx_pkt_len = ETHER_MAX_LEN,
-  }
-};
-
-/*
- * Initializes a given port using global settings and with the RX buffers
- * coming from the mbuf_pool passed as a parameter.
- */
-static int port_init(
-    uint8_t port,
-    const uint16_t rx_rings,
-    unsigned int num_rxdesc,
-    struct rte_mempool *mbuf_pool) {
-
-  struct rte_eth_conf port_conf = port_conf_default;
-  struct rte_eth_dev_info dev_info;
-  int retval;
-  uint16_t q;
-
-  /* Check if the port id is valid */
-  if(rte_eth_dev_is_valid_port(port)==0) {
-    RTE_LOG(ERR, DPDKCAP, "Port identifier %d out of range (0 to %d) or not"\
-       " attached.\n", port, rte_eth_dev_count()-1);
-    return -EINVAL;
-  }
-
-  /* Get the device info */
-  rte_eth_dev_info_get(port, &dev_info);
-
-  /* Check if the requested number of queue is valid */
-  if(rx_rings > dev_info.max_rx_queues) {
-    RTE_LOG(ERR, DPDKCAP, "Port %d can only handle up to %d queues (%d "\
-        "requested).\n", port, dev_info.max_rx_queues, rx_rings);
-    return -EINVAL;
-  }
-
-  /* Check if the number of requested RX descriptors is valid */
-  if(num_rxdesc > dev_info.rx_desc_lim.nb_max ||
-     num_rxdesc < dev_info.rx_desc_lim.nb_min ||
-     num_rxdesc % dev_info.rx_desc_lim.nb_align != 0) {
-    RTE_LOG(ERR, DPDKCAP, "Port %d cannot be configured with %d RX "\
-        "descriptors per queue (min:%d, max:%d, align:%d)\n",
-        port, num_rxdesc, dev_info.rx_desc_lim.nb_min,
-        dev_info.rx_desc_lim.nb_max, dev_info.rx_desc_lim.nb_align);
-    return -EINVAL;
-  }
-
-  /* Configure multiqueue (Activate Receive Side Scaling on UDP/TCP fields) */
-  if (rx_rings > 1) {
-    port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
-    port_conf.rx_adv_conf.rss_conf.rss_key = NULL;
-    port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_PROTO_MASK;
-  }
-
-  /* Configure the Ethernet device. */
-  retval = rte_eth_dev_configure(port, rx_rings, 0, &port_conf);
-  if (retval) {
-    RTE_LOG(ERR, DPDKCAP, "rte_eth_dev_configure(...): %s\n",
-        rte_strerror(-retval));
-    return retval;
-  }
-
-  /* Allocate and set up RX queues. */
-  for (q = 0; q < rx_rings; q++) {
-    retval = rte_eth_rx_queue_setup(port, q, num_rxdesc,
-        rte_eth_dev_socket_id(port), NULL, mbuf_pool);
-    if (retval) {
-      RTE_LOG(ERR, DPDKCAP, "rte_eth_rx_queue_setup(...): %s\n",
-          rte_strerror(-retval));
-      return retval;
-    }
-  }
-
-  /* Stats bindings (if more than one queue) */
-  if(dev_info.max_rx_queues > 1) {
-    for (q = 0; q < rx_rings; q++) {
-      retval = rte_eth_dev_set_rx_queue_stats_mapping (port, q, q);
-      if (retval) {
-        RTE_LOG(WARNING, DPDKCAP, "rte_eth_dev_set_rx_queue_stats_mapping(...):"\
-            " %s\n", rte_strerror(-retval));
-        RTE_LOG(WARNING, DPDKCAP, "The queues statistics mapping failed. The "\
-           "displayed queue statistics are thus unreliable.\n");
-      }
-    }
-  }
-
-  /* Enable RX in promiscuous mode for the Ethernet device. */
-  rte_eth_promiscuous_enable(port);
-
-  /* Display the port MAC address. */
-  struct ether_addr addr;
-  rte_eth_macaddr_get(port, &addr);
-  RTE_LOG(INFO, DPDKCAP, "Port %u: MAC=%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8
-      ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", RXdesc/queue=%d\n",
-      (unsigned) port,
-      addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2],
-      addr.addr_bytes[3], addr.addr_bytes[4], addr.addr_bytes[5],
-      num_rxdesc);
-
-  return 0;
-}
 
 /*
  * Handles signals
  */
-static volatile bool should_stop = false;
+static volatile bool stop_condition = false;
 static void signal_handler(int sig) {
-  RTE_LOG(NOTICE, DPDKCAP, "Caught signal %s on core %u%s\n",
-      strsignal(sig), rte_lcore_id(),
-      rte_get_master_lcore()==rte_lcore_id()?" (MASTER CORE)":"");
-  should_stop = true;
+    LOG_INFO("Caught signal %s on core %u%s\n",
+            strsignal(sig), rte_lcore_id(),
+            rte_get_master_lcore()==rte_lcore_id()?" (MASTER CORE)":"");
+    stop_condition = true;
 }
 
 /*
@@ -372,257 +280,386 @@ static void signal_handler(int sig) {
  * functions.
  */
 int main(int argc, char *argv[]) {
-  signal(SIGINT, signal_handler);
-  struct core_capture_config * cores_config_capture_list;
-  struct core_write_config   * cores_config_write_list;
-  unsigned int lcoreid_list[MAX_LCORES];
-  unsigned int nb_lcores;
-  struct rte_mempool *mbuf_pool;
-  unsigned int port_id;
-  unsigned int i,j;
-  unsigned int required_cores;
-  unsigned int core_index;
-  int result;
-  FILE * log_file;
 
-  /* Initialize the Environment Abstraction Layer (EAL). */
-  int ret = rte_eal_init(argc, argv);
-  if (ret < 0)
-    rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+    struct arguments args;
+    struct capture_core_config * capture_core_configs;
+    struct write_core_config   * write_core_configs;
+    struct write_core_stats * write_core_stats;
+    struct capture_core_stats * capture_core_stats;
+    struct rte_ring ** pbuf_full_rings;
+    struct rte_ring ** pbuf_free_rings;
+    struct pcap_buffer ** buffers;
+    struct rte_mempool ** rx_pools;
+    struct rte_mempool ** tx_pools;
 
+    uint16_t port;
+    unsigned int lcoreid_list[MAX_LCORES];
+    unsigned int nb_lcores;
+    unsigned int i,j,k,l,m;
+    unsigned int required_cores;
+    unsigned int lcore_id;
+    int result;
 
-  argc -= ret;
-  argv += ret;
+    FILE * log_file;
 
-  /* Parse arguments */
-  arguments = (struct arguments) {
-    .statistics = 0,
-      .nb_mbufs = NUM_MBUFS_DEFAULT,
-      .num_rx_desc_str_matrix = NULL,
-      .per_port_c_cores = 1,
-      .num_w_cores = 1,
-      .no_compression = 0,
-      .snaplen = PCAP_SNAPLEN_DEFAULT,
-      .portmask = 0x1,
-      .rotate_seconds = 0,
-      .file_size_limit = 0,
-      .log_file=NULL,
-  };
-  strncpy(arguments.output_file_template, DPDKCAP_OUTPUT_TEMPLATE_DEFAULT,
-      DPDKCAP_OUTPUT_FILENAME_LENGTH);
-  argp_parse(&argp, argc, argv, 0, 0, &arguments);
+    /* Setup the signal handler */
+    signal(SIGINT, signal_handler);
 
-  /* Set log level */
-  rte_set_log_type(RTE_LOGTYPE_DPDKCAP, 1);
-  rte_set_log_level(RTE_LOG_DEBUG);
+    /* Initialize the Environment Abstraction Layer (EAL). */
+    int ret = rte_eal_init(argc, argv);
+    if (ret < 0)
+        rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
 
-  /* Change log stream if needed */
-  if(arguments.log_file) {
-    log_file = fopen(arguments.log_file, "w");
-    if(!log_file) {
-    rte_exit(EXIT_FAILURE, "Error: Could not open log file: (%d) %s\n",
-        errno, strerror(errno));
+    argc -= ret;
+    argv += ret;
+
+    args = (struct arguments) {
+        .stats = 0,
+        .port_list = NULL,
+        .burst_size = BURST_SIZE_DEFAULT,
+        .pause_burst_size = PAUSE_BURST_SIZE,
+        .disk_blk_size = DISK_BLK_SIZE,
+        .nb_queues_per_port = 1,
+        .flow_control = 0,
+        .snaplen = PCAP_SNAPLEN_DEFAULT,
+        .nb_mbufs = NUM_MBUFS_DEFAULT,
+        .mbuf_len = RTE_MBUF_DEFAULT_BUF_SIZE,
+        .pbuf_len = PCAP_BUF_LEN_DEFAULT,
+        .nb_pbufs = NUM_PBUFS_DEFAULT,
+        .portmask = 0x1,
+        .rotate_seconds = 0,
+        .file_size_limit = 0,
+        .output_file_template = NULL,
+        .log_file = NULL,
+        .num_rx_desc_str_matrix = NULL,
+    };
+
+    args.output_file_template = calloc(OUTPUT_FILENAME_LENGTH, 1);
+    strncpy(args.output_file_template, OUTPUT_TEMPLATE_DEFAULT,
+                        OUTPUT_FILENAME_LENGTH);
+
+    /* Parse arguments */
+    argp_parse(&argp, argc, argv, 0, 0, &args);
+
+    /* Change log stream if needed */
+    if (args.log_file) {
+        log_file = fopen(args.log_file, "w");
+        if (!log_file)
+            rte_exit(EXIT_FAILURE, "Error: Could not open log file: (%d) %s\n",
+                        errno, strerror(errno));
+
+        result = rte_openlog_stream(log_file);
+        if (result)
+            rte_exit(EXIT_FAILURE, "Error: Could not change log stream: (%d) %s\n",
+                        rte_errno, rte_strerror(rte_errno));
     }
-    result=rte_openlog_stream(log_file);
-    if(result) {
-    rte_exit(EXIT_FAILURE, "Error: Could not change log stream: (%d) %s\n",
-        errno, strerror(errno));
+
+    char * tmp_path = strdup(args.output_file_template);
+    strcat(tmp_path, "_tmp_file");
+    unsigned int maj_dev = 0;
+
+    int fd = open(tmp_path, O_CREAT | O_RDONLY, 0644);
+    if (fd<0) {
+        LOG_WARN("Warning: Could not open temporary file to read disk block size: %d (%s)\n",
+                        errno, strerror(errno));
+        goto next;
     }
-  }
 
-  /* Add suffixes to output if needed */
-  if (!strstr(arguments.output_file_template,
-        DPDKCAP_OUTPUT_TEMPLATE_TOKEN_CORE_ID))
-    strcat(arguments.output_file_template,
-        "_"DPDKCAP_OUTPUT_TEMPLATE_TOKEN_CORE_ID);
-  if (arguments.file_size_limit &&
-      !strstr(arguments.output_file_template,
-        DPDKCAP_OUTPUT_TEMPLATE_TOKEN_FILECOUNT))
-    strcat(arguments.output_file_template,
-        "_"DPDKCAP_OUTPUT_TEMPLATE_TOKEN_FILECOUNT);
-
-  strcat(arguments.output_file_template, ".pcap");
-
-  if(!arguments.no_compression)
-    strcat(arguments.output_file_template, ".lzo");
-
-  /* Check if at least one port is available */
-  if (rte_eth_dev_count() == 0)
-    rte_exit(EXIT_FAILURE, "Error: No port available.\n");
-
-  /* Fills in the number of rx descriptors matrix */
-  unsigned long * num_rx_desc_matrix = calloc(rte_eth_dev_count(), sizeof(int));
-  if (arguments.num_rx_desc_str_matrix != NULL &&
-      parse_matrix_opt(arguments.num_rx_desc_str_matrix,
-        num_rx_desc_matrix, rte_eth_dev_count()) < 0) {
-    rte_exit(EXIT_FAILURE, "Invalid RX descriptors matrix.\n");
-  }
-
-  /* Creates the port list */
-  nb_ports = 0;
-  for (i = 0; i < 64; i++) {
-    if (! ((uint64_t)(1ULL << i) & arguments.portmask))
-      continue;
-    if (i<rte_eth_dev_count())
-      portlist[nb_ports++] = i;
+    struct stat stat_buf;
+    if (fstat(fd, &stat_buf) < 0)
+        LOG_WARN("Warning: Could not stat temporary file to read disk block size: %d (%s)\n",
+                        errno, strerror(errno));
     else
-      RTE_LOG(WARNING, DPDKCAP, "Warning: port %d is in portmask, " \
-          "but not enough ports are available. Ignoring...\n", i);
-  }
-  if (nb_ports == 0)
-    rte_exit(EXIT_FAILURE, "Error: Found no usable port. Check portmask "\
-        "option.\n");
+        maj_dev = major(stat_buf.st_dev);
 
-  RTE_LOG(INFO,DPDKCAP,"Using %u ports to listen on\n", nb_ports);
+    close(fd);
+    remove(tmp_path);
 
-  /* Checks core number */
-  required_cores=(1+nb_ports*arguments.per_port_c_cores+arguments.num_w_cores);
-  if (rte_lcore_count() < required_cores) {
-    rte_exit(EXIT_FAILURE, "Assign at least %d cores to dpdkcap.\n",
-        required_cores);
-  }
-  RTE_LOG(INFO,DPDKCAP,"Using %u cores out of %d allocated\n",
-      required_cores, rte_lcore_count());
+    if (maj_dev != 0) {
+        char sysfs_path[100];
+        sprintf(sysfs_path, "/sys/dev/block/%u:0/queue/logical_block_size", maj_dev);
+        fd = open(sysfs_path, O_RDONLY);
 
+        if (fd<0) {
+            LOG_WARN("Warning: Could not read disk block size: %d (%s)\n", errno, strerror(errno));
+            goto next;
+        }
 
-  /* Creates a new mempool in memory to hold the mbufs. */
-  mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", arguments.nb_mbufs,
-      MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+        char tmp_buf[10];
+        if (read(fd, tmp_buf, 9) < 1)
+            LOG_WARN("Warning: Could not read disk block size: %d (%s)\n", errno, strerror(errno));
+        else
+            args.disk_blk_size = strtoul(tmp_buf, NULL, 10);
 
-  if (mbuf_pool == NULL)
-    rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
-
-
-  //Initialize buffer for writing to disk
-  write_ring = rte_ring_create("Ring for writing",
-      rte_align32pow2 (arguments.nb_mbufs), rte_socket_id(), 0);
-
-  /* Core index */
-  core_index = rte_get_next_lcore(-1, 1, 0);
-
-  /* Init stats list */
-  cores_stats_write_list=
-    malloc(sizeof(struct core_write_stats)*arguments.num_w_cores);
-  cores_stats_capture_list=
-    malloc(sizeof(struct core_capture_stats)*arguments.per_port_c_cores
-        *nb_ports);
-
-  /* Init config lists */
-  cores_config_write_list=
-    malloc(sizeof(struct core_write_config)*arguments.num_w_cores);
-  cores_config_capture_list=
-    malloc(sizeof(struct core_capture_config)*arguments.per_port_c_cores
-        *nb_ports);
-
-  nb_lcores = 0;
-  /* Writing cores */
-  for (i=0; i<arguments.num_w_cores; i++) {
-
-    //Configure writing core
-    struct core_write_config * config = &(cores_config_write_list[i]);
-    config->ring = write_ring;
-    config->stop_condition = &should_stop;
-    config->stats = &(cores_stats_write_list[i]);
-    config->output_file_template = arguments.output_file_template;
-    config->no_compression = arguments.no_compression;
-    config->snaplen = arguments.snaplen;
-    config->rotate_seconds = arguments.rotate_seconds;
-    config->file_size_limit = arguments.file_size_limit;
-
-    //Launch writing core
-    if (rte_eal_remote_launch((lcore_function_t *) write_core,
-          config, core_index) < 0)
-      rte_exit(EXIT_FAILURE, "Could not launch writing process on lcore %d.\n",
-          core_index);
-
-    //Add the core to the list
-    lcoreid_list[nb_lcores] = core_index;
-    nb_lcores++;
-
-    core_index = rte_get_next_lcore(core_index, SKIP_MASTER, 0);
-  }
-
-  /* For each port */
-  for (i = 0; i < nb_ports; i++) {
-    port_id = portlist[i];
-
-    /* Port init */
-    int retval = port_init(
-        port_id,
-        arguments.per_port_c_cores,
-        (num_rx_desc_matrix[i] != 0)?num_rx_desc_matrix[i]:RX_DESC_DEFAULT,
-        mbuf_pool);
-    if (retval) {
-      rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", port_id);
+        close(fd);
     }
 
-    /* Capturing cores */
-    for (j=0; j<arguments.per_port_c_cores; j++) {
-      //Configure capture core
-      struct core_capture_config * config =
-        &(cores_config_capture_list[i*arguments.per_port_c_cores+j]);
-      config->ring = write_ring;
-      config->stop_condition = &should_stop;
-      config->stats =
-        &(cores_stats_capture_list[i*arguments.per_port_c_cores+j]);
-      config->port = port_id;
-      config->queue = j;
-      //Launch capture core
-      if (rte_eal_remote_launch((lcore_function_t *) capture_core,
-            config, core_index) < 0)
-        rte_exit(EXIT_FAILURE, "Could not launch capture process on lcore "\
-            "%d.\n",core_index);
+next:
 
-      //Add the core to the list
-      lcoreid_list[nb_lcores] = core_index;
-      nb_lcores++;
+    /* Add suffixes to output if needed */
+    if (!strstr(args.output_file_template, OUTPUT_TEMPLATE_TOKEN_CORE_ID))
+        strcat(args.output_file_template, "_"OUTPUT_TEMPLATE_TOKEN_CORE_ID);
 
-      core_index = rte_get_next_lcore(core_index, SKIP_MASTER, 0);
+    if (args.file_size_limit && !strstr(args.output_file_template, OUTPUT_TEMPLATE_TOKEN_FILECOUNT))
+        strcat(args.output_file_template, "_"OUTPUT_TEMPLATE_TOKEN_FILECOUNT);
+
+    strcat(args.output_file_template, ".pcap");
+
+    /* Check if at least one port is available */
+    uint16_t avail_ports = rte_eth_dev_count_avail();
+    if (avail_ports == 0)
+        rte_exit(EXIT_FAILURE, "Error: No port available.\n");
+
+    /* Fills in the number of rx descriptors matrix */
+    unsigned long * num_rx_desc_matrix = calloc(avail_ports, sizeof(unsigned long));
+    if (args.num_rx_desc_str_matrix != NULL &&
+            parse_matrix_opt(args.num_rx_desc_str_matrix, num_rx_desc_matrix, avail_ports) < 0) {
+        rte_exit(EXIT_FAILURE, "Invalid RX descriptors matrix.\n");
     }
 
-    /* Start the port once everything is ready to capture */
-    retval = rte_eth_dev_start(port_id);
-    if (retval) {
-      rte_exit(EXIT_FAILURE, "Cannot start port %"PRIu8 "\n", port_id);
+    /* Creates the port list */
+    uint16_t nb_ports = 0;
+    args.port_list = calloc(64, sizeof(uint16_t));
+    for (port = 0; port < avail_ports; port++)
+        if (args.portmask & (uint64_t)(1ULL << port))
+            args.port_list[nb_ports++] = port;
+
+    if (nb_ports == 0)
+        rte_exit(EXIT_FAILURE, "Error: Found no usable port. Check portmask option.\n");
+
+    LOG_INFO("Using %u ports to listen on\n", nb_ports);
+
+    uint16_t nb_queues_per_port = args.nb_queues_per_port;
+    uint16_t nb_queues = nb_queues_per_port * nb_ports;
+    uint16_t mbuf_len = args.mbuf_len;
+    uint32_t nb_mbufs = rte_align32pow2(args.nb_mbufs);
+    uint32_t nb_pbufs = rte_align32pow2(args.nb_pbufs);
+    uint32_t pbuf_len = rte_align32pow2(args.pbuf_len);
+    uint32_t rx_burst_len = mbuf_len * args.burst_size;
+    uint32_t watermark = pbuf_len - rx_burst_len;
+
+    LOG_INFO("Cores/Queues Per Port: %d Burst Size: %d\n",
+                            nb_queues_per_port, args.burst_size);
+    LOG_INFO("MBufs: Num: %d Len: %d B  PBufs: Num: %d Len: %d B\n",
+                            nb_mbufs, mbuf_len, nb_pbufs, pbuf_len);
+    LOG_INFO("RX Burst Len: %d Watermark: %d\n",
+                            rx_burst_len, watermark);
+    LOG_INFO("Flow control: %s Pause Burst Size: %d\n",
+                            args.flow_control?"ON":"OFF", args.pause_burst_size);
+    LOG_INFO("Disk (%d:0) block size = %d\n",
+                            maj_dev, args.disk_blk_size);
+
+    if (pbuf_len < 2 * rx_burst_len) {
+        rte_exit(EXIT_FAILURE, "Packet buffer length should be atleast %d B.\n",
+                2 * rx_burst_len);
     }
-  }
 
-  //Initialize statistics timer
-  struct stats_data sd = {
-    .ring = write_ring,
-    .cores_stats_write_list = cores_stats_write_list,
-    .cores_write_stats_list_size = arguments.num_w_cores,
-    .cores_stats_capture_list = cores_stats_capture_list,
-    .cores_capture_stats_list_size = arguments.per_port_c_cores*nb_ports,
-    .port_list=portlist,
-    .port_list_size=nb_ports,
-    .queue_per_port=arguments.per_port_c_cores,
-    .log_file=arguments.log_file,
-  };
+    /* Checks core number */
+    required_cores = 2 * nb_queues + 1;
+    if (rte_lcore_count() < required_cores)
+        rte_exit(EXIT_FAILURE, "Assign at least %d cores to dpdkcap. %d found.\n",
+                            required_cores, rte_lcore_count());
 
-  if (arguments.statistics && !should_stop) {
-    signal(SIGINT, SIG_DFL);
-    //End the capture when the interface returns
-    start_stats_display(&sd);
-    should_stop=true;
-  }
+    LOG_INFO("Using %u cores out of %d allocated\n", required_cores, rte_lcore_count());
 
-  //Wait for all the cores to complete and exit
-  RTE_LOG(NOTICE, DPDKCAP, "Waiting for all cores to exit\n");
-  for(i=0;i<nb_lcores;i++) {
-    result = rte_eal_wait_lcore(lcoreid_list[i]);
-    if (result < 0) {
-      RTE_LOG(ERR, DPDKCAP, "Core %d did not stop correctly.\n",
-          lcoreid_list[i]);
+    /* Init config stats and buffer lists */
+    capture_core_configs = calloc(nb_queues, sizeof(struct capture_core_config));
+    write_core_configs = calloc(nb_queues, sizeof(struct write_core_config));
+
+    capture_core_stats = calloc(nb_queues, sizeof(struct capture_core_stats));
+    write_core_stats = calloc(nb_queues, sizeof(struct write_core_stats));
+
+    rx_pools = calloc(nb_queues, sizeof(struct mempool *));
+    tx_pools = calloc(nb_queues, sizeof(struct mempool *));
+
+    pbuf_full_rings = calloc(nb_queues, sizeof(struct ring *));
+    pbuf_free_rings = calloc(nb_queues, sizeof(struct ring *));
+
+    buffers = calloc(nb_queues * nb_pbufs, sizeof(struct pcap_buffer *));
+
+    lcore_id = rte_get_next_lcore(-1, 1, 0);
+    nb_lcores = 0;
+
+    /* For each port */
+    for (i = 0; i < nb_ports; i++) {
+        port = args.port_list[i];
+
+        /* Allocate memory */
+        for (j = 0; j < nb_queues_per_port; j++) {
+
+            k = i * nb_queues_per_port + j;
+            char name[32];
+
+            sprintf(name, "RX_POOL_%d_%d", i, j);
+            rx_pools[k] = rte_pktmbuf_pool_create(name, nb_mbufs,
+                            MBUF_CACHE_SIZE, 0, mbuf_len, rte_socket_id());
+
+            if (rx_pools[k] == NULL)
+                rte_exit(EXIT_FAILURE, "Cannot create mbuf pool: (%d) %s\n",
+                            rte_errno, rte_strerror(rte_errno));
+
+            sprintf(name, "TX_POOL_%d_%d", i, j);
+            tx_pools[k] = rte_pktmbuf_pool_create(name, PAUSE_MBUF_POOL_SIZE,
+                            MBUF_CACHE_SIZE, 0, mbuf_len, rte_socket_id());
+
+            if (tx_pools[k] == NULL)
+                rte_exit(EXIT_FAILURE, "Cannot create pause frame mbuf pool: (%d) %s\n",
+                            rte_errno, rte_strerror(rte_errno));
+
+            sprintf(name, "PCE_RING_%d_%d", i, j);
+            pbuf_free_rings[k] = rte_ring_create(name, nb_pbufs * 2,
+                            rte_socket_id(), RING_F_SP_ENQ | RING_F_SC_DEQ);
+
+            if (pbuf_free_rings[k] == NULL)
+                rte_exit(EXIT_FAILURE, "Cannot create pbuf free ring: (%d) %s\n",
+                            rte_errno, rte_strerror(rte_errno));
+
+            sprintf(name, "PCF_RING_%d_%d", i, j);
+            pbuf_full_rings[k] = rte_ring_create(name, nb_pbufs * 2,
+                            rte_socket_id(), RING_F_SP_ENQ | RING_F_SC_DEQ);
+
+            if (pbuf_full_rings[k] == NULL)
+                rte_exit(EXIT_FAILURE, "Cannot create pbuf full ring: (%d) %s\n",
+                            rte_errno, rte_strerror(rte_errno));
+
+            for (l = 0; l < nb_pbufs; l++) {
+                m = i * nb_queues_per_port * nb_pbufs + j * nb_pbufs + l;
+
+                buffers[m] = calloc(1, sizeof(struct pcap_buffer));
+                buffers[m]->offset = 0;
+                buffers[m]->packets = 0;
+                buffers[m]->buffer = rte_malloc(NULL, pbuf_len, args.disk_blk_size);
+
+                if (buffers[m]->buffer == NULL)
+                    rte_exit(EXIT_FAILURE, "Cannot create pbuf buffer: (%d) %s\n",
+                            rte_errno, rte_strerror(rte_errno));
+            }
+
+            m = i * nb_queues_per_port * nb_pbufs + j * nb_pbufs;
+            rte_ring_sp_enqueue_bulk(pbuf_free_rings[k], (void **)&buffers[m], nb_pbufs, NULL);
+        }
+
+        /* Initialise and start the port */
+        result = port_init(
+                port,
+                nb_queues_per_port,
+                (num_rx_desc_matrix[i] != 0)?num_rx_desc_matrix[i]:RX_DESC_DEFAULT,
+                &rx_pools[i*nb_queues_per_port],
+                args.flow_control);
+
+        if (result) {
+            rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", port);
+        }
+
+        for (j = 0; j < nb_queues_per_port; j++) {
+
+            k = i * nb_queues_per_port + j;
+
+            //Configure capture core
+            struct capture_core_config * config =
+                                &(capture_core_configs[k]);
+            config->port = port;
+            config->queue = j;
+            config->pbuf_free_ring = pbuf_free_rings[k];
+            config->pbuf_full_ring = pbuf_full_rings[k];
+            config->pause_mbuf_pool = tx_pools[k];
+            config->stop_condition = &stop_condition;
+            config->burst_size = args.burst_size;
+            config->pause_burst_size = args.pause_burst_size;
+            config->disk_blk_size = args.disk_blk_size;
+            config->flow_control = args.flow_control;
+            config->snaplen = args.snaplen;
+            config->watermark = watermark;
+            config->stats = &(capture_core_stats[k]);
+
+            //Launch capture core
+            LOG_INFO("Launching capture process: worker=%u, port=%u, core=%u, queue=%u\n", k, port, lcore_id, j);
+            result = rte_eal_remote_launch((lcore_function_t *) capture_core, config, lcore_id);
+            if (result)
+                rte_exit(EXIT_FAILURE, "Error: Could not launch capture process on lcore %d: (%d) %s\n",
+                        lcore_id, result, rte_strerror(-result));
+
+            //Add the core to the list
+            lcoreid_list[nb_lcores] = lcore_id;
+            nb_lcores++;
+
+            lcore_id = rte_get_next_lcore(lcore_id, 1, 0);
+        }
+
+        /* Writing cores */
+        for (j = 0; j < nb_queues_per_port; j++) {
+
+            k = i * nb_queues_per_port + j;
+
+            //Configure writing core
+            struct write_core_config * config =
+                                &(write_core_configs[k]);
+            config->port = port;
+            config->pbuf_free_ring = pbuf_free_rings[k];
+            config->pbuf_full_ring = pbuf_full_rings[k];
+            config->stop_condition = &stop_condition;
+            config->burst_size = nb_pbufs;
+            config->disk_blk_size = args.disk_blk_size;
+            config->snaplen = args.snaplen;
+            config->stats = &(write_core_stats[k]);
+            config->output_file_template = args.output_file_template;
+            config->rotate_seconds = args.rotate_seconds;
+            config->file_size_limit = args.file_size_limit;
+
+            //Launch writing core
+            LOG_INFO("Launching write process: worker=%u, port=%u, core=%u, queue=%u\n", k, port, lcore_id, j);
+            result = rte_eal_remote_launch((lcore_function_t *) write_core, config, lcore_id);
+            if (result)
+                rte_exit(EXIT_FAILURE, "Error: Could not launch write process on lcore %d: (%d) %s\n",
+                        lcore_id, result, rte_strerror(-result));
+
+            //Add the core to the list
+            lcoreid_list[nb_lcores] = lcore_id;
+            nb_lcores++;
+
+            lcore_id = rte_get_next_lcore(lcore_id, 1, 0);
+        }
+
     }
-  }
 
-  //Finalize
-  free(cores_stats_write_list);
-  free(cores_stats_capture_list);
-  free(cores_config_write_list);
-  free(cores_config_capture_list);
-  free(num_rx_desc_matrix);
+    //Initialize stats timer
+    struct stats_data sd = {
+        .port_list = args.port_list,
+        .capture_core_stats = capture_core_stats,
+        .write_core_stats = write_core_stats,
+        .nb_ports = nb_ports,
+        .nb_queues = nb_queues,
+        .nb_queues_per_port = nb_queues_per_port,
+        .log_file = args.log_file,
+    };
 
-  return 0;
+    if (args.stats)
+        start_stats_display(&sd, &stop_condition);
+
+    while(!stop_condition)
+        sleep(5);
+
+    //Wait for all the cores to complete and exit
+    LOG_INFO("Waiting for all cores to exit\n");
+    for(i = 0; i < nb_lcores; i++) {
+        result = rte_eal_wait_lcore(lcoreid_list[i]);
+        if (result) {
+            LOG_ERR("Core %d did not stop correctly: (%d)\n", lcoreid_list[i], result);
+        }
+    }
+
+    //Finalize
+    free(write_core_stats);
+    free(capture_core_stats);
+    free(write_core_configs);
+    free(capture_core_configs);
+    free(rx_pools);
+    free(tx_pools);
+    free(pbuf_free_rings);
+    free(pbuf_full_rings);
+    free(num_rx_desc_matrix);
+    free(args.output_file_template);
+    free(args.port_list);
+
+    return 0;
 }

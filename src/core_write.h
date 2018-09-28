@@ -1,37 +1,45 @@
 #ifndef DPDKCAP_CORE_WRITE_H
 #define DPDKCAP_CORE_WRITE_H
 
-#include <stdbool.h>
-#include <stdint.h>
+#include <fcntl.h>
+#include <sys/time.h>
+#include <sys/uio.h>
 
-#define DPDKCAP_OUTPUT_FILENAME_LENGTH 100
-#define DPDKCAP_WRITE_BURST_SIZE 256
+#include <rte_ethdev.h>
+#include <rte_malloc.h>
+#include <rte_mbuf.h>
+
+#include "pcap.h"
+#include "utils.h"
+
+#define OUTPUT_FILENAME_LENGTH 100
 
 /* Writing core configuration */
-struct core_write_config {
-  struct rte_ring * ring;
-  bool volatile * stop_condition;
-  struct core_write_stats * stats;
-  char * output_file_template;
-  int no_compression;
-  unsigned int snaplen;
-  unsigned long rotate_seconds;
-  uint64_t file_size_limit;
-};
+struct write_core_config {
+    uint16_t port;
+    struct rte_ring * pbuf_free_ring;
+    struct rte_ring * pbuf_full_ring;
+    uint16_t burst_size;
+    uint16_t snaplen;
+    uint16_t disk_blk_size;
+    bool volatile * stop_condition;
+    struct write_core_stats * stats;
+    char * output_file_template;
+    uint64_t rotate_seconds;
+    uint64_t file_size_limit;
+} __rte_cache_aligned;
 
 /* Statistics structure */
-struct core_write_stats {
-  int core_id;
-  char output_file[DPDKCAP_OUTPUT_FILENAME_LENGTH];
-  uint64_t current_file_packets;
-  uint64_t current_file_bytes;
-  uint64_t current_file_compressed_bytes;
-  uint64_t packets;
-  uint64_t bytes;
-  uint64_t compressed_bytes;
-};
+struct write_core_stats {
+    char output_file[OUTPUT_FILENAME_LENGTH];
+    uint16_t core_id;
+    uint64_t current_file_bytes;
+    uint64_t packets;
+    uint64_t bytes;
+    struct rte_ring * pbuf_full_ring;
+} __rte_cache_aligned;
 
 /* Launches a write task */
-int write_core(const struct core_write_config * config);
+int write_core(const struct write_core_config * config);
 
 #endif

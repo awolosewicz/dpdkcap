@@ -1,7 +1,4 @@
 #include "utils.h"
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
 
 const char * bytes_unit[] = { "B", "KB", "MB", "GB", "TB" };
 const char * nb_unit[] = {"k", "M", "G"};
@@ -26,22 +23,22 @@ char * ul_format(uint64_t nb) {
         converted_nb = nb / 1000.0;
     }
     if (i>0)
-      sprintf(result, "%.2f%s", converted_nb, nb_unit[i-1]);
+        sprintf(result, "%.2f%s", converted_nb, nb_unit[i-1]);
     else
-      sprintf(result, "%d", (int) converted_nb);
+        sprintf(result, "%d", (int) converted_nb);
     return result;
 }
 
 char * str_replace(const char * src, const char * find, const char * replace) {
-  int find_len, replace_len, src_left_length;
-  char * pos = strstr(src,find);
-  if (pos) {
-    find_len = strlen(find);
-    replace_len = strlen(replace);
-    src_left_length = strlen(pos+find_len)+1;
+    int find_len, replace_len, src_left_length;
+    char * pos = strstr(src,find);
+    if (pos) {
+        find_len = strlen(find);
+        replace_len = strlen(replace);
+        src_left_length = strlen(pos+find_len)+1;
 
-    memmove(pos+replace_len, pos+find_len, src_left_length);
-    memmove(pos           , replace, replace_len);
-  }
-  return pos;
+        memmove(pos+replace_len, pos+find_len, src_left_length);
+        memmove(pos           , replace, replace_len);
+    }
+    return pos;
 }
