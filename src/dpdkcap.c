@@ -8,6 +8,7 @@
 #include <rte_malloc.h>
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
+#include <rte_version.h>
 
 #include "core_write.h"
 #include "core_capture.h"

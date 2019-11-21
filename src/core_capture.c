@@ -12,9 +12,9 @@ static inline void prepare_pause_frame(uint16_t port, struct rte_mbuf *mbuf) {
     /* Prepare a PAUSE frame */
     hdr = rte_pktmbuf_mtod(mbuf, struct rte_ether_hdr *);
     pause_frame = (struct ether_fc_frame *) &hdr[1];
-    rte_eth_macaddr_get(port, &hdr->s_addr);
+    rte_eth_macaddr_get(port, &hdr->src_addr);
 
-    void *tmp = &hdr->d_addr.addr_bytes[0];
+    void *tmp = &hdr->dst_addr.addr_bytes[0];
     *((uint64_t *)tmp) = 0x010000C28001ULL;
 
     hdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE_FLOW_CONTROL);
