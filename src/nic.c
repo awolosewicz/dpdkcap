@@ -109,7 +109,12 @@ int port_init(
 
     /* Enable jumbo frames */
     port_conf.rxmode.max_rx_pkt_len = dev_info.max_mtu;
-    port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME;
+    if (dev_info.rx_offload_capa & DEV_RX_OFFLOAD_JUMBO_FRAME)
+        port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME;
+
+    /* Enable scatter gather */
+    if (dev_info.rx_offload_capa & DEV_RX_OFFLOAD_SCATTER)
+        port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_SCATTER;
 
     /* Configure the Ethernet device. */
     retval = rte_eth_dev_configure(port, rx_queues, tx_queues, &port_conf);
