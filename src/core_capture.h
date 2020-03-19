@@ -13,8 +13,6 @@
 #define OPCODE_PAUSE 0x0001
 #define PAUSE_TIME 65535
 
-#define MIN(a,b) (((a)<(b))?(a):(b))
-
 /* Core configuration structures */
 struct capture_core_config {
     uint16_t port;
