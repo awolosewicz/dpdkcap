@@ -74,8 +74,11 @@ int capture_core(const struct capture_core_config * config) {
     struct pcap_buffer * buffer = NULL;
     struct pcap_packet_header * header;
     size_t header_size = sizeof(struct pcap_packet_header);
-    struct timeval tv;
     uint32_t packet_length;
+
+    const uint16_t mw_timestamp = config->mw_timestamp;
+    struct timeval tv;
+    unsigned char * trailer_base;
 
     const uint16_t disk_blk_size = config->disk_blk_size;
     uint16_t i, nb_rx;
@@ -115,7 +118,8 @@ int capture_core(const struct capture_core_config * config) {
 
         if (likely(nb_rx > 0)) {
 
-            gettimeofday(&tv, NULL);
+            if (!mw_timestamp)
+                gettimeofday(&tv, NULL);
 
             for (i=0; i < nb_rx; i++) {
                 bufptr = bufs[i];
@@ -142,8 +146,15 @@ int capture_core(const struct capture_core_config * config) {
                     buffer->offset += packet_length;
                 }
 
-                header->seconds = (uint32_t) tv.tv_sec;
-                header->microseconds = (uint32_t) tv.tv_usec;
+                if (mw_timestamp) {
+                    trailer_base = buffer->buffer + buffer->offset - 12;
+                    header->seconds = ntohl(*(uint32_t *)trailer_base);
+                    header->microseconds = ntohl(*(uint32_t *)(trailer_base + 4));
+                }
+                else {
+                    header->seconds = (uint32_t) tv.tv_sec;
+                    header->microseconds = (uint32_t) tv.tv_usec;
+                }
 
                 rte_pktmbuf_free(bufptr);
             }

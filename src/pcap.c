@@ -27,7 +27,7 @@ void pcap_header_init(unsigned char * file_header,
             unsigned int snaplen, unsigned int disk_blk_size) {
 
     struct pcap_file_header * pcap_hdr = (struct pcap_file_header *)file_header;
-    pcap_hdr->magic_number = 0xa1b2c3d4;
+    pcap_hdr->magic_number = 0xa1b23c4d;
     pcap_hdr->version_major = 0x0002;
     pcap_hdr->version_minor = 0x0004;
     pcap_hdr->thiszone = 0;
