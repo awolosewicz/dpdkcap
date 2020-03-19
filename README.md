@@ -115,7 +115,6 @@ template is formatted according to the following tokens:
   you might overwrite previously created files.
 
 ### 2.5 Other options
-- `-s, --snaplen` limits the packet capture to LENGTH bytes.
 - `-S, --stats` prints a set of stats while the capture is
   running.
 - `--logs` output logs into the specified file instead of stderr.
