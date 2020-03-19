@@ -93,6 +93,7 @@ static struct argp_option options[] = {
             "file template to index each new file.", 0},
     { "portmask", 'p', "PORTMASK", 0, "Ethernet ports mask (default: 0x1).", 0 },
     { "flow-control", 'z', 0, 0, "Enable flow control.", 0 },
+    { "mw-timestamp", 't', 0, 0, "Use MetaWatch trailer timestamps.", 0 },
     { "logs", 700, "FILE", 0, "Writes the logs into FILE instead of "\
         "stderr.", 0 },
     { 0 } };
@@ -105,6 +106,7 @@ struct arguments {
     uint16_t disk_blk_size;
     uint16_t nb_queues_per_port;
     uint16_t flow_control;
+    uint16_t mw_timestamp;
     uint16_t snaplen;
     uint32_t nb_mbufs;
     uint32_t mbuf_len;
@@ -240,6 +242,9 @@ static error_t parse_opt(int key, char* arg, struct argp_state *state) {
         case 'f':
             args->file_size_limit = strtoll(arg, &end, 10);
             break;
+        case 't':
+            args->mw_timestamp = 1;
+            break;
         case 'z':
             args->flow_control = 1;
             break;
@@ -316,6 +321,7 @@ int main(int argc, char *argv[]) {
         .disk_blk_size = DISK_BLK_SIZE,
         .nb_queues_per_port = 1,
         .flow_control = 0,
+        .mw_timestamp = 0,
         .snaplen = PCAP_SNAPLEN_DEFAULT,
         .nb_mbufs = NUM_MBUFS_DEFAULT,
         .mbuf_len = RTE_MBUF_DEFAULT_BUF_SIZE,
@@ -441,6 +447,8 @@ next:
                             rx_burst_len, watermark);
     LOG_INFO("Flow control: %s Pause Burst Size: %d\n",
                             args.flow_control?"ON":"OFF", args.pause_burst_size);
+    LOG_INFO("Use MetaWatch trailer timestamps: %s\n",
+                            args.mw_timestamp?"ON":"OFF");
     LOG_INFO("Disk (%d:0) block size = %d\n",
                             maj_dev, args.disk_blk_size);
 
@@ -563,6 +571,7 @@ next:
             config->pause_burst_size = args.pause_burst_size;
             config->disk_blk_size = args.disk_blk_size;
             config->flow_control = args.flow_control;
+            config->mw_timestamp = args.mw_timestamp;
             config->snaplen = args.snaplen;
             config->watermark = watermark;
             config->stats = &(capture_core_stats[k]);

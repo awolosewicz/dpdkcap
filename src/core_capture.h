@@ -25,6 +25,7 @@ struct capture_core_config {
     uint16_t snaplen;
     uint16_t disk_blk_size;
     uint16_t flow_control;
+    uint16_t mw_timestamp;
     bool volatile * stop_condition;
     struct capture_core_stats * stats;
     uint32_t watermark;
