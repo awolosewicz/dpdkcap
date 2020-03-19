@@ -25,7 +25,7 @@
 #define PAUSE_BURST_SIZE 128
 #define PAUSE_MBUF_POOL_SIZE 8192
 
-#define PCAP_SNAPLEN_DEFAULT 32768
+#define PCAP_SNAPLEN_DEFAULT 65535
 
 #define PCAP_BUF_LEN_DEFAULT 1024 * 1024 * 128
 #define NUM_PBUFS_DEFAULT 4
@@ -92,8 +92,6 @@ static struct argp_option options[] = {
             "Use \""OUTPUT_TEMPLATE_TOKEN_FILECOUNT"\" within the output "\
             "file template to index each new file.", 0},
     { "portmask", 'p', "PORTMASK", 0, "Ethernet ports mask (default: 0x1).", 0 },
-    { "snaplen", 's', "LENGTH", 0, "Snap the capture to snaplen bytes "\
-        "(default: 65535).", 0 },
     { "flow-control", 'z', 0, 0, "Enable flow control.", 0 },
     { "logs", 700, "FILE", 0, "Writes the logs into FILE instead of "\
         "stderr.", 0 },
@@ -235,9 +233,6 @@ static error_t parse_opt(int key, char* arg, struct argp_state *state) {
             break;
         case 'q':
             args->nb_queues_per_port = strtoul(arg, &end, 10);
-            break;
-        case 's':
-            args->snaplen = strtoul(arg, &end, 10);
             break;
         case 'r':
             args->rotate_seconds = strtoul(arg, &end, 10);

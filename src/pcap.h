@@ -14,7 +14,7 @@ struct pcap_file_header {
 } __rte_packed;
 
 struct pcap_packet_header {
-    uint32_t timestamp;
+    uint32_t seconds;
     uint32_t microseconds;
     uint32_t packet_length;
     uint32_t packet_length_wire;

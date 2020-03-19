@@ -69,16 +69,16 @@ int capture_core(const struct capture_core_config * config) {
 
     struct rte_ring * pbuf_free_ring = config->pbuf_free_ring;
     struct rte_ring * pbuf_full_ring = config->pbuf_full_ring;
-    const uint32_t snaplen = config->snaplen;
     const uint32_t watermark = config->watermark;
 
     struct pcap_buffer * buffer = NULL;
-    struct pcap_packet_header header;
-    size_t header_size = sizeof(header);
+    struct pcap_packet_header * header;
+    size_t header_size = sizeof(struct pcap_packet_header);
     struct timeval tv;
+    uint32_t packet_length;
 
     const uint16_t disk_blk_size = config->disk_blk_size;
-    uint16_t i, nb_rx, bytes_to_write;
+    uint16_t i, nb_rx;
     unsigned int overrun = 0, overrun_start = 0, flush = 0;
     unsigned char * oldbuf = NULL;
 
@@ -116,40 +116,36 @@ int capture_core(const struct capture_core_config * config) {
         if (likely(nb_rx > 0)) {
 
             gettimeofday(&tv, NULL);
-            header.timestamp = (uint32_t) tv.tv_sec;
-            header.microseconds = (uint32_t) tv.tv_usec;
 
             for (i=0; i < nb_rx; i++) {
                 bufptr = bufs[i];
-                rte_prefetch0(rte_pktmbuf_mtod(bufptr, void *));
 
-                header.packet_length = MIN(snaplen, bufptr->pkt_len);
-                header.packet_length_wire = bufptr->pkt_len;
-                rte_mov16(buffer->buffer + buffer->offset, (void*)&header);
+                header = (struct pcap_packet_header *)(buffer->buffer + buffer->offset);
                 buffer->offset += header_size;
 
+                packet_length = bufptr->pkt_len;
+
+                header->packet_length = packet_length;
+                header->packet_length_wire = packet_length;
+
                 if(unlikely(bufptr->nb_segs > 1)) {
-                    if(header.packet_length <= bufptr->data_len) {
-                        rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod(bufptr, void*), header.packet_length);
-                        buffer->offset += header.packet_length;
-                    }
-                    else {
-                        rte_prefetch0(rte_pktmbuf_mtod(bufptr->next, void *));
-                        bytes_to_write = header.packet_length;
-                        do {
-                            rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod(bufptr, void*), bufptr->data_len);
-                            bytes_to_write -= bufptr->data_len;
-                            buffer->offset += bufptr->data_len;
-                            bufptr = bufptr->next;
-                        } while (bufptr && bytes_to_write > 0);
-                        bufptr = bufs[i];
-                    }
+                    do {
+                        rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod(bufptr, void*), bufptr->data_len);
+                        buffer->offset += bufptr->data_len;
+                        bufptr = bufptr->next;
+                    } while (bufptr);
+                    /* Reset the pointer to the original mbuf for freeing */
+                    bufptr = bufs[i];
                 }
                 else {
-                    rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod(bufptr, void*), header.packet_length);
-                    buffer->offset += header.packet_length;
+                    rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod(bufptr, void*), packet_length);
+                    buffer->offset += packet_length;
                 }
-            rte_pktmbuf_free(bufptr);
+
+                header->seconds = (uint32_t) tv.tv_sec;
+                header->microseconds = (uint32_t) tv.tv_usec;
+
+                rte_pktmbuf_free(bufptr);
             }
 
             /* Update stats */
