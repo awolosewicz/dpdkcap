@@ -28,7 +28,7 @@ struct pcap_buffer {
 
 void add_pad_packet(struct pcap_packet_header * pkthdr, int pad_len);
 
-void pcap_header_init(unsigned char * file_header,
-            unsigned int snaplen, unsigned int disk_blk_size);
+void pcap_header_init(unsigned char * file_header, unsigned int snaplen,
+                      unsigned int mw_timestamp, unsigned int disk_blk_size);
 
 #endif

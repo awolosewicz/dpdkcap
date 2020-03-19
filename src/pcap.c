@@ -23,11 +23,16 @@ void add_pad_packet(struct pcap_packet_header * pkthdr, int pad_len) {
     }
 }
 
-void pcap_header_init(unsigned char * file_header,
-            unsigned int snaplen, unsigned int disk_blk_size) {
+void pcap_header_init(unsigned char * file_header, unsigned int snaplen,
+                      unsigned int mw_timestamp, unsigned int disk_blk_size) {
 
     struct pcap_file_header * pcap_hdr = (struct pcap_file_header *)file_header;
-    pcap_hdr->magic_number = 0xa1b23c4d;
+    if (mw_timestamp)
+        /* Nanosecond magic */
+        pcap_hdr->magic_number = 0xa1b23c4d;
+    else
+        /* Microsecond magic */
+        pcap_hdr->magic_number = 0xa1b2c3d4;
     pcap_hdr->version_major = 0x0002;
     pcap_hdr->version_minor = 0x0004;
     pcap_hdr->thiszone = 0;
