@@ -5,7 +5,7 @@
 # DPDKCap
 DPDKCap is packet capture tool based on DPDK. It provides a multi-port,
 multi-core optimized capture. Thus particularly suiting captures at
-very high speeds (more than 10Gpbs). It has been tested with DPDK 19.08.
+very high speeds (more than 10Gpbs). It has been tested with DPDK 19.11.
 
 ### Build status
 | Branch  | Status |
@@ -24,15 +24,15 @@ guide](http://dpdk.org/doc/guides/linux_gsg/build_dpdk.html).
 
 ### 1.2 Install dependencies
 
-DPDKCap requires the following dependencies to be built:
+DPDKCap requires the following packages to be installed for the build to succeed:
 - libncurses-dev
 
 ### 1.3 Build and Install DPDKCap
 
 To build DPDKCap, you first need to set `RTE_SDK` and `RTE_TARGET`.
 ```
-$ export RTE_SDK=... # Replace by your DPDK install directory
-$ export RTE_TARGET=x86_64-native-linuxapp-gcc # Replace by your target
+$ export RTE_SDK=... # Replace with your DPDK source install directory
+$ export RTE_TARGET=x86_64-native-linuxapp-gcc # Replace with your DPDK build target
 ```
 
 To build DPDKCap, run the following command into DPDKCap root directory:
