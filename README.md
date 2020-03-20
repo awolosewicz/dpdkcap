@@ -5,7 +5,7 @@
 # DPDKCap
 DPDKCap is packet capture tool based on DPDK. It provides a multi-port,
 multi-core optimized capture. Thus particularly suiting captures at
-very high speeds (more than 10Gpbs). It has been tested with DPDK 19.11.
+very high speeds (more than 10 gbps). It has been tested with DPDK 19.11.
 
 ### Build status
 | Branch  | Status |
@@ -154,11 +154,36 @@ template is formatted according to the following tokens:
 Here is a list of common issues and how to solve them:
 - Mbufs pool allocation failure: try to reduce the number of memory buffers
   used with the `-m, -num_mbufs` option.
+
 - Mbufs allocation failures (while running): try to raise the number of memory
   buffers used with the `-m, -num_mbufs` option.
+
 - Problems with with RX queues configuration: the default number of RX
   descriptors configured might be too high for your interface. Try to change
   the number of RX descriptors used with the `-d, --rx_desc` option.
+
+- Low performance / packet drops:
+  a) try the following kernel cmdline parameters to enable cpu core isolation:
+
+  ```
+  e.g. isolate cores 1-7 in an eight core CPU
+  isolcpus=1-7 nohz_full=1-7 rcu_nocbs=1-7 irqaffinity=0
+  ```
+
+  b) try the following kernel cmdline parameters to disable some of the spectre /
+  meltdown fixes in the linux kernel which can drastically reduce performance:
+
+  ```
+  nospec_store_bypass_disable noibrs noibpb spectre_v2_user=off spectre_v2=off
+  nopti l1tf=off kvm-intel.vmentry_l1d_flush=never mitigations=off
+  ```
+
+  c) try the following kernel cmdline parameters to disable CPU low power states and
+  other performce reducing linux features:
+
+  ```
+  selinux=0 audit=0 tsc=reliable intel_idle.max_cstate=0 processor.max_cstate=0
+  ```
 
 ## 4. Software License Agreements
 
