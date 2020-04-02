@@ -83,19 +83,7 @@ system capabilities, you might need to use more cores.
 The `-c, --cores_per_port` option allocates `NB_CORES_PER_PORT` capturing
 cores **per selected port**. An equal number of writing cores will be used.
 
-### 2.3 Limiting file size or duration
-
-Depending on the data you want to capture, you might need to split the capture
-into several files. Two options are available to limit file size/duration:
-- The `-r, --rotate_seconds` option creates a new file every `T` seconds.
-- The `-f, --file_size_limit` option creates a new file when the current file
-  size goes over the specified `SIZE`.
-
-You can specify the output file template using the `-w, --output` option. This
-is necessary with the `-r, --rotate_seconds` option if you do not want to erase
-the same file again and again. See the following section.
-
-### 2.4 Setting output template
+### 2.3 Setting output template
 
 The `-w,--output` option lets you provide a template for the output file. This
 template is formatted according to the following tokens:
@@ -104,17 +92,7 @@ template is formatted according to the following tokens:
   token is mandatory and will be automatically appended to the output file
   template if not present.
 
-- `%FCOUNT` this is replaced by a counter that allows distinguishing files
-  created by the `-f, --file_size_limit` option. If this option is used, this
-  token is mandatory and will be automatically appended to the output file
-  template if not present.
-
-- Date *strftime* tokens. These tokens are replaced according to *strftime*
-  standard. This date is updated every time the `-r, --rotate_seconds` option
-  triggers a file change. These tokens are not mandatory with this option, but
-  you might overwrite previously created files.
-
-### 2.5 Other options
+### 2.4 Other options
 - `-S, --stats` prints a set of stats while the capture is
   running.
 - `--logs` output logs into the specified file instead of stderr.

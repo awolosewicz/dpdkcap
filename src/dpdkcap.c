@@ -34,7 +34,6 @@
 
 #define DISK_BLK_SIZE 4096
 
-#define OUTPUT_TEMPLATE_TOKEN_FILECOUNT "\%FCOUNT"
 #define OUTPUT_TEMPLATE_TOKEN_CORE_ID   "\%COREID"
 #define OUTPUT_TEMPLATE_DEFAULT "output_" \
     OUTPUT_TEMPLATE_TOKEN_CORE_ID
@@ -84,13 +83,6 @@ static struct argp_option options[] = {
             "                      port 3 has 1024 RX desc per queue."
             , 0 },
     { "burst_size", 'b', "NUM", 0, "Size of receive burst (default: "STR(BURST_SIZE_DEFAULT)")", 0 },
-    { "rotate_seconds", 'r', "SECS", 0, "Create a new set of files every T "\
-        "seconds. Use strftime formats within the output file template to rename "\
-            "each file accordingly.", 0},
-    { "file_size_limit", 'f', "SIZE", 0, "Before writing a packet, check "\
-        "whether the target file excess SIZE bytes. If so, creates a new file. " \
-            "Use \""OUTPUT_TEMPLATE_TOKEN_FILECOUNT"\" within the output "\
-            "file template to index each new file.", 0},
     { "portmask", 'p', "PORTMASK", 0, "Ethernet ports mask (default: 0x1).", 0 },
     { "flow-control", 'z', 0, 0, "Enable flow control.", 0 },
     { "mw-timestamp", 't', 0, 0, "Use MetaWatch trailer timestamps.", 0 },
@@ -113,8 +105,6 @@ struct arguments {
     uint32_t nb_pbufs;
     uint32_t pbuf_len;
     uint64_t portmask;
-    uint64_t rotate_seconds;
-    uint64_t file_size_limit;
     char * output_file_template;
     char * log_file;
     char * num_rx_desc_str_matrix;
@@ -236,12 +226,6 @@ static error_t parse_opt(int key, char* arg, struct argp_state *state) {
         case 'q':
             args->nb_queues_per_port = strtoul(arg, &end, 10);
             break;
-        case 'r':
-            args->rotate_seconds = strtoul(arg, &end, 10);
-            break;
-        case 'f':
-            args->file_size_limit = strtoll(arg, &end, 10);
-            break;
         case 't':
             args->mw_timestamp = 1;
             break;
@@ -328,8 +312,6 @@ int main(int argc, char *argv[]) {
         .pbuf_len = PCAP_BUF_LEN_DEFAULT,
         .nb_pbufs = NUM_PBUFS_DEFAULT,
         .portmask = 0x1,
-        .rotate_seconds = 0,
-        .file_size_limit = 0,
         .output_file_template = NULL,
         .log_file = NULL,
         .num_rx_desc_str_matrix = NULL,
@@ -400,9 +382,6 @@ next:
     /* Add suffixes to output if needed */
     if (!strstr(args.output_file_template, OUTPUT_TEMPLATE_TOKEN_CORE_ID))
         strcat(args.output_file_template, "_"OUTPUT_TEMPLATE_TOKEN_CORE_ID);
-
-    if (args.file_size_limit && !strstr(args.output_file_template, OUTPUT_TEMPLATE_TOKEN_FILECOUNT))
-        strcat(args.output_file_template, "_"OUTPUT_TEMPLATE_TOKEN_FILECOUNT);
 
     strcat(args.output_file_template, ".pcap");
 
@@ -608,8 +587,6 @@ next:
             config->snaplen = args.snaplen;
             config->stats = &(write_core_stats[k]);
             config->output_file_template = args.output_file_template;
-            config->rotate_seconds = args.rotate_seconds;
-            config->file_size_limit = args.file_size_limit;
 
             //Launch writing core
             LOG_INFO("Launching write process: worker=%u, port=%u, core=%u, queue=%u\n", k, port, lcore_id, j);

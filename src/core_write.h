@@ -26,8 +26,6 @@ struct write_core_config {
     bool volatile * stop_condition;
     struct write_core_stats * stats;
     char * output_file_template;
-    uint64_t rotate_seconds;
-    uint64_t file_size_limit;
 } __rte_cache_aligned;
 
 /* Statistics structure */

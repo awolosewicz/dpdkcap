@@ -4,8 +4,7 @@
  * Change file name from template
  */
 static void format_from_template(char * filename,
-        const char * template, const int core_id,
-        const int file_count, const struct timeval * file_start) {
+        const char * template, const int core_id) {
 
     char str_buf[OUTPUT_FILENAME_LENGTH];
 
@@ -14,14 +13,7 @@ static void format_from_template(char * filename,
             OUTPUT_FILENAME_LENGTH);
     snprintf(str_buf, 50, "%02d", core_id);
     while(str_replace(filename,"\%COREID",str_buf));
-    snprintf(str_buf, 50, "%03d", file_count);
-    while(str_replace(filename,"\%FCOUNT",str_buf));
     strncpy(str_buf, filename, OUTPUT_FILENAME_LENGTH);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-nonliteral"
-    strftime(filename, OUTPUT_FILENAME_LENGTH, str_buf,
-            localtime(&(file_start->tv_sec)));
-#pragma GCC diagnostic pop
 }
 
 /*
@@ -82,7 +74,6 @@ int write_core(const struct write_core_config * config) {
     struct rte_ring * pbuf_full_ring = config->pbuf_full_ring;
     int pcap_file;
 
-    struct timeval tv, file_start;
     uint16_t disk_blk_size = config->disk_blk_size;
     unsigned char * file_header = rte_zmalloc(NULL, disk_blk_size, disk_blk_size);
     uint16_t i, nb_bufs;
@@ -92,18 +83,14 @@ int write_core(const struct write_core_config * config) {
     struct iovec iov[burst_size];
 
     char file_name[OUTPUT_FILENAME_LENGTH];
-    unsigned int file_count = 0, stop = 0;
+    unsigned int stop = 0;
     uint64_t file_size = 0;
-    bool file_changed = 0;
-
-    gettimeofday(&file_start, NULL);
 
     LOG_INFO("Core %d is writing using file template: %s.\n",
             rte_lcore_id(), config->output_file_template);
 
     //Update filename
-    format_from_template(file_name, config->output_file_template,
-            rte_lcore_id(), file_count, &file_start);
+    format_from_template(file_name, config->output_file_template, rte_lcore_id());
 
     //Init stats
     config->stats->core_id = rte_lcore_id();
@@ -155,52 +142,6 @@ int write_core(const struct write_core_config * config) {
         file_size += written;
         config->stats->current_file_bytes = file_size;
         config->stats->bytes += written;
-
-        //Create a new file according to limits
-        if(unlikely(config->rotate_seconds)) {
-            gettimeofday(&tv, NULL);
-            if((uint32_t)(tv.tv_sec-file_start.tv_sec) >= config->rotate_seconds) {
-                gettimeofday(&file_start, NULL);
-                file_count++;
-                file_changed=1;
-            }
-        }
-
-        if(unlikely(config->file_size_limit)) {
-            if(file_size >= config->file_size_limit) {
-                file_count++;
-                file_changed=1;
-            }
-        }
-
-        //Open new file
-        if(unlikely(file_changed)) {
-            //Change file name
-            format_from_template(file_name, config->output_file_template,
-                    rte_lcore_id(), file_count, &file_start);
-
-            //Update stats
-            config->stats->current_file_bytes = 0;
-            rte_memcpy(config->stats->output_file, file_name,
-                    OUTPUT_FILENAME_LENGTH);
-
-            //Close pcap file and open new one
-            if(close_pcap(pcap_file)) {
-                retval = -1;
-                goto cleanup;
-            }
-
-            //Reopen a file
-            pcap_file = open_pcap(file_name, file_header, disk_blk_size);
-            if(!pcap_file) {
-                retval = -1;
-                goto cleanup;
-            }
-
-            //Reset file size
-            file_changed = 0;
-            file_size = 0;
-        }
     }
 
 cleanup:
