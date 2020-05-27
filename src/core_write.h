@@ -2,7 +2,6 @@
 #define DPDKCAP_CORE_WRITE_H
 
 #include <fcntl.h>
-#include <sys/time.h>
 #include <sys/uio.h>
 
 #include <rte_ethdev.h>

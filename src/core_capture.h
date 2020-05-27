@@ -1,8 +1,6 @@
 #ifndef DPDKCAP_CORE_CAPTURE_H
 #define DPDKCAP_CORE_CAPTURE_H
 
-#include <sys/time.h>
-
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
 
