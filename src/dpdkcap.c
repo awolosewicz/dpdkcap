@@ -583,7 +583,6 @@ next:
             config->stop_condition = &stop_condition;
             config->burst_size = nb_pbufs;
             config->disk_blk_size = args.disk_blk_size;
-            config->mw_timestamp = args.mw_timestamp;
             config->snaplen = args.snaplen;
             config->stats = &(write_core_stats[k]);
             config->output_file_template = args.output_file_template;

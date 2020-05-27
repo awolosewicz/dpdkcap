@@ -103,7 +103,7 @@ int write_core(const struct write_core_config * config) {
         LOG_WARN("Port %u on different socket from worker; performance will suffer\n", port);
 
     //Init the common pcap header
-    pcap_header_init(file_header, config->snaplen, config->mw_timestamp, disk_blk_size);
+    pcap_header_init(file_header, config->snaplen, disk_blk_size);
 
     //Open new file
     pcap_file = open_pcap(file_name, file_header, disk_blk_size);

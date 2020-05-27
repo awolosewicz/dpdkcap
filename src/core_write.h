@@ -22,7 +22,6 @@ struct write_core_config {
     uint16_t burst_size;
     uint16_t snaplen;
     uint16_t disk_blk_size;
-    uint16_t mw_timestamp;
     bool volatile * stop_condition;
     struct write_core_stats * stats;
     char * output_file_template;
