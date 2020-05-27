@@ -15,7 +15,7 @@ struct pcap_file_header {
 
 struct pcap_packet_header {
     uint32_t seconds;
-    uint32_t microseconds;
+    uint32_t nanoseconds;
     uint32_t packet_length;
     uint32_t packet_length_wire;
 } __rte_packed;
@@ -29,6 +29,6 @@ struct pcap_buffer {
 void add_pad_packet(struct pcap_packet_header * pkthdr, int pad_len);
 
 void pcap_header_init(unsigned char * file_header, unsigned int snaplen,
-                      unsigned int mw_timestamp, unsigned int disk_blk_size);
+                      unsigned int disk_blk_size);
 
 #endif

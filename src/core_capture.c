@@ -77,7 +77,7 @@ int capture_core(const struct capture_core_config * config) {
     uint32_t packet_length;
 
     const uint16_t mw_timestamp = config->mw_timestamp;
-    struct timeval tv;
+    struct timespec ts;
     unsigned char * trailer_base;
 
     const uint16_t disk_blk_size = config->disk_blk_size;
@@ -119,7 +119,7 @@ int capture_core(const struct capture_core_config * config) {
         if (likely(nb_rx > 0)) {
 
             if (!mw_timestamp)
-                gettimeofday(&tv, NULL);
+                clock_gettime(CLOCK_REALTIME_COARSE, &ts);
 
             for (i=0; i < nb_rx; i++) {
                 bufptr = bufs[i];
@@ -149,11 +149,11 @@ int capture_core(const struct capture_core_config * config) {
                 if (mw_timestamp) {
                     trailer_base = buffer->buffer + buffer->offset - 12;
                     header->seconds = ntohl(*(uint32_t *)trailer_base);
-                    header->microseconds = ntohl(*(uint32_t *)(trailer_base + 4));
+                    header->nanoseconds = ntohl(*(uint32_t *)(trailer_base + 4));
                 }
                 else {
-                    header->seconds = (uint32_t) tv.tv_sec;
-                    header->microseconds = (uint32_t) tv.tv_usec;
+                    header->seconds = (uint32_t) ts.tv_sec;
+                    header->nanoseconds = (uint32_t) ts.tv_nsec;
                 }
 
                 rte_pktmbuf_free(bufptr);
