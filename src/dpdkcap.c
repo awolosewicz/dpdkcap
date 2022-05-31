@@ -256,7 +256,7 @@ static volatile bool stop_condition = false;
 static void signal_handler(int sig) {
     LOG_INFO("Caught signal %s on core %u%s\n",
             strsignal(sig), rte_lcore_id(),
-            rte_get_master_lcore()==rte_lcore_id()?" (MASTER CORE)":"");
+            rte_get_main_lcore()==rte_lcore_id()?" (MAIN CORE)":"");
     stop_condition = true;
 }
 
