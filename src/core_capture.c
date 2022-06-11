@@ -51,6 +51,7 @@ static inline uint16_t send_pause_frames(uint16_t port, uint16_t queue,
 int capture_core(const struct capture_core_config * config) {
     const unsigned socket_id = rte_socket_id();
     unsigned dev_socket_id;
+    struct rte_eth_link link;
 
     volatile bool * stop_condition = config->stop_condition;
 
@@ -94,6 +95,12 @@ int capture_core(const struct capture_core_config * config) {
     /* Init stats */
     config->stats->core_id = rte_lcore_id();
     config->stats->pbuf_free_ring = config->pbuf_free_ring;
+
+    rte_eth_link_get_nowait(config->port, &link);
+    while (link.link_status != RTE_ETH_LINK_UP) {
+        LOG_INFO("Core %u waiting for port %u to come up\n", rte_lcore_id(), config->port);
+        rte_eth_link_get(config->port, &link);
+    }
 
     if (flow_control) {
         pause_frame = rte_pktmbuf_alloc(pause_mbuf_pool);
