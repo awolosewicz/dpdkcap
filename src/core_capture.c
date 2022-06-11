@@ -102,6 +102,8 @@ int capture_core(const struct capture_core_config * config) {
         rte_eth_link_get(config->port, &link);
     }
 
+    LOG_INFO("Core %u started capturing on port %u\n", rte_lcore_id(), config->port);
+
     if (flow_control) {
         pause_frame = rte_pktmbuf_alloc(pause_mbuf_pool);
         if(!pause_frame)
