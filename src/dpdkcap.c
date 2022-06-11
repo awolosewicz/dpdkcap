@@ -9,7 +9,13 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_version.h>
+#include <rte_malloc.h>
 
+<<<<<<< HEAD
+=======
+#include "pcap.h"
+#include "numa.h"
+>>>>>>> e92137e (add NUMA awareness (WIP, but functional))
 #include "core_write.h"
 #include "core_capture.h"
 #include "nic.h"
@@ -91,6 +97,7 @@ static struct argp_option options[] = {
         "stderr.", 0 },
     { 0 } };
 
+// XXX TODO NUMA
 struct arguments {
     int stats;
     uint16_t * port_list;
