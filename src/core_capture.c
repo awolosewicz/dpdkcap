@@ -45,13 +45,32 @@ static inline uint16_t send_pause_frames(uint16_t port, uint16_t queue,
     return nb_tx;
 }
 
+void wait_link_up(const struct capture_core_config * config, bool wait) {
+  struct rte_eth_link link;
+
+  if (wait) {
+    rte_eth_link_get(config->port, &link);
+  } else {
+    rte_eth_link_get_nowait(config->port, &link);
+  }
+  if (link.link_status != RTE_ETH_LINK_UP) {
+    while (link.link_status != RTE_ETH_LINK_UP) {
+      LOG_INFO("Capture core %u waiting for port %u to come up\n",
+        rte_lcore_id(), config->port);
+      rte_eth_link_get(config->port, &link);
+    }
+
+    LOG_INFO("Core %u is capturing packets for port %u\n",
+      rte_lcore_id(), config->port);
+  }
+}
+
 /*
  * Capture the traffic from the given port/queue tuple
  */
 int capture_core(const struct capture_core_config * config) {
     const unsigned socket_id = rte_socket_id();
     unsigned dev_socket_id;
-    struct rte_eth_link link;
 
     volatile bool * stop_condition = config->stop_condition;
 
@@ -96,13 +115,7 @@ int capture_core(const struct capture_core_config * config) {
     config->stats->core_id = rte_lcore_id();
     config->stats->pbuf_free_ring = config->pbuf_free_ring;
 
-    rte_eth_link_get_nowait(config->port, &link);
-    while (link.link_status != RTE_ETH_LINK_UP) {
-        LOG_INFO("Core %u waiting for port %u to come up\n", rte_lcore_id(), config->port);
-        rte_eth_link_get(config->port, &link);
-    }
-
-    LOG_INFO("Core %u started capturing on port %u\n", rte_lcore_id(), config->port);
+    wait_link_up(config, false);
 
     if (flow_control) {
         pause_frame = rte_pktmbuf_alloc(pause_mbuf_pool);
