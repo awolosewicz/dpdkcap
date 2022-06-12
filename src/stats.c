@@ -73,12 +73,14 @@ void start_stats_display(struct stats_data * data, bool volatile * stop_conditio
     rte_timer_init (&(stats_timer));
 
     //Timer launch
-    rte_timer_reset(&(stats_timer), 2000000ULL * STATS_PERIOD_MS, PERIODICAL,
+    rte_timer_reset(&(stats_timer), rte_get_timer_hz() * STATS_PERIOD_MS, PERIODICAL,
             rte_lcore_id(), (void*) print_stats, data);
 
     //Wait for ctrl+c
-    while(likely(!(*stop_condition)))
+    while(likely(!(*stop_condition))) {
         rte_timer_manage();
+        rte_delay_us( 1000000 * rte_timer_next_ticks() / rte_get_timer_hz() );
+    }
 
     rte_timer_stop(&(stats_timer));
 }
