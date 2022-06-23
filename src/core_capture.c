@@ -45,7 +45,7 @@ static inline uint16_t send_pause_frames(uint16_t port, uint16_t queue,
     return nb_tx;
 }
 
-void wait_link_up(const struct capture_core_config * config, bool wait) {
+uint32_t wait_link_up(const struct capture_core_config * config, bool wait) {
   struct rte_eth_link link;
 
   if (wait) {
@@ -60,9 +60,11 @@ void wait_link_up(const struct capture_core_config * config, bool wait) {
       rte_eth_link_get(config->port, &link);
     }
 
-    LOG_INFO("Core %u is capturing packets for port %u\n",
-      rte_lcore_id(), config->port);
+    LOG_INFO("Core %u is capturing packets for port %u at %u Mbps\n",
+      rte_lcore_id(), config->port, link.link_speed);
   }
+
+  return(link.link_speed);
 }
 
 /*
