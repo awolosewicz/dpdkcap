@@ -117,7 +117,7 @@ int capture_core(const struct capture_core_config * config) {
     config->stats->core_id = rte_lcore_id();
     config->stats->pbuf_free_ring = config->pbuf_free_ring;
 
-    wait_link_up(config, false);
+    wait_link_up(config, true);
 
     if (flow_control) {
         pause_frame = rte_pktmbuf_alloc(pause_mbuf_pool);
