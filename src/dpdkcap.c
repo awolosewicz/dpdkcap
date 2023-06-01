@@ -345,9 +345,19 @@ int main(int argc, char *argv[]) {
                         rte_errno, rte_strerror(rte_errno));
     }
 
+<<<<<<< HEAD
     char * tmp_path = strdup(args.output_file_template);
     strcat(tmp_path, "_tmp_file");
     unsigned int maj_dev = 0;
+=======
+	/* Fills in the number of rx descriptors matrix */
+	unsigned long *num_rx_desc_matrix = calloc(dev_count, sizeof(unsigned long));
+	if (arguments.num_rx_desc_str_matrix != NULL &&
+	    parse_matrix_opt(arguments.num_rx_desc_str_matrix,
+			     num_rx_desc_matrix, dev_count) < 0) {
+		rte_exit(EXIT_FAILURE, "Invalid RX descriptors matrix.\n");
+	}
+>>>>>>> 4808c7c (FIX: desc_matrix array size)
 
     int fd = open(tmp_path, O_CREAT | O_RDONLY, 0644);
     if (fd<0) {
