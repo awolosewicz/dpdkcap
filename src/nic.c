@@ -32,6 +32,7 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
     struct rte_eth_link link;
     uint16_t socket, q, tx_queues = 0;
     int retval, retry = 5;
+    int status = 0;
 
     if (flow_control) {
         tx_queues = rx_queues;
@@ -47,7 +48,12 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
 
     /* Get the device info and validate config*/
     socket = rte_eth_dev_socket_id(port);
-    rte_eth_dev_info_get(port, &dev_info);
+    status = rte_eth_dev_info_get(port, &dev_info);
+    if (status < 0) {
+        LOG_ERR("Cannot get device info for port %d: %s\n", port, rte_strerror(-status));
+        return status;
+    }
+
 
     /* Display the port MAC address. */
     rte_eth_macaddr_get(port, &addr);
@@ -159,12 +165,12 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
 
     /* Get link status */
     do {
-        rte_eth_link_get_nowait(port, &link);
+        status = rte_eth_link_get_nowait(port, &link);
     } while (retry-- > 0 && !link.link_status && !sleep(1));
 
     // if still no link information, must be down
     if (!link.link_status) {
-        LOG_ERR("Cannot detect valid link for port: %d\n", port);
+        LOG_ERR("Cannot detect valid link for port %d, status: %s\n", port, rte_strerror(-status));
         return -ENOLINK;
     }
 
