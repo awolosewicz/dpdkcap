@@ -45,26 +45,31 @@ static inline uint16_t send_pause_frames(uint16_t port, uint16_t queue,
     return nb_tx;
 }
 
-uint32_t wait_link_up(const struct capture_core_config * config, bool wait) {
+void wait_link_up(const struct capture_core_config * config, bool wait) {
   struct rte_eth_link link;
+  int retstat = 0;
 
   if (wait) {
-    rte_eth_link_get(config->port, &link);
+    retstat = rte_eth_link_get(config->port, &link);
   } else {
-    rte_eth_link_get_nowait(config->port, &link);
+    retstat = rte_eth_link_get_nowait(config->port, &link);
   }
+
   if (link.link_status != RTE_ETH_LINK_UP) {
     while (link.link_status != RTE_ETH_LINK_UP) {
-      LOG_INFO("Capture core %u waiting for port %u to come up\n",
-        rte_lcore_id(), config->port);
-      rte_eth_link_get(config->port, &link);
+        if (unlikely(retstat < 0)) {
+            LOG_INFO("Error on retrieving link status for port %u: %s\n",
+            config->port, rte_strerror(-retstat));
+            return;
+        }
+        LOG_INFO("Capture core %u waiting for port %u to come up\n",
+            rte_lcore_id(), config->port);
+        retstat = rte_eth_link_get(config->port, &link);
     }
 
     LOG_INFO("Core %u is capturing packets for port %u at %u Mbps\n",
       rte_lcore_id(), config->port, link.link_speed);
   }
-
-  return(link.link_speed);
 }
 
 /*
