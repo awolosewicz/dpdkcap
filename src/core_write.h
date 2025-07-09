@@ -17,14 +17,14 @@
 /* Writing core configuration */
 struct write_core_config {
     uint16_t port;
-    struct rte_ring * pbuf_free_ring;
-    struct rte_ring * pbuf_full_ring;
+    struct rte_ring* pbuf_free_ring;
+    struct rte_ring* pbuf_full_ring;
     uint16_t burst_size;
     uint16_t snaplen;
     uint16_t disk_blk_size;
-    bool volatile * stop_condition;
-    struct write_core_stats * stats;
-    char * output_file_template;
+    bool volatile* stop_condition;
+    struct write_core_stats* stats;
+    char* output_file_template;
 } __rte_cache_aligned;
 
 /* Statistics structure */
@@ -34,10 +34,10 @@ struct write_core_stats {
     uint64_t current_file_bytes;
     uint64_t packets;
     uint64_t bytes;
-    struct rte_ring * pbuf_full_ring;
+    struct rte_ring* pbuf_full_ring;
 } __rte_cache_aligned;
 
 /* Launches a write task */
-int write_core(const struct write_core_config * config);
+int write_core(const struct write_core_config* config);
 
 #endif
