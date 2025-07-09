@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #ifndef DPDKCAP_CORE_WRITE_H
 #define DPDKCAP_CORE_WRITE_H
 
