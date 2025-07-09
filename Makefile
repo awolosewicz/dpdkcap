@@ -4,9 +4,7 @@ APP = dpdkcap
 
 # all source (prefix gets added later)
 SRC_DIR = src
-#SOURCES := dpdkcap.c core_write.c core_capture.c statistics_ncurses.c pcap.c utils.c lzo/minilzo/minilzo.c lzo/lzowrite.c
-SOURCES := dpdkcap.c core_write.c core_capture.c statistics.c numa.c pcap.c utils.c lzo/minilzo/minilzo.c lzo/lzowrite.c
-
+SOURCES := dpdkcap.c core_write.c core_capture.c nic.c stats.c pcap.c utils.c
 PKGCONF ?= pkg-config
 
 # Build using pkg-config variables if possible
