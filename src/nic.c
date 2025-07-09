@@ -6,11 +6,11 @@
 
 static const struct rte_eth_conf port_conf_default = {
     .rxmode = {
-        .mq_mode = ETH_MQ_RX_NONE,
-        .max_rx_pkt_len = RTE_ETHER_MAX_LEN,
+        .mq_mode = RTE_ETH_MQ_RX_NONE,
+        .mtu = 0x2600 - RTE_ETHER_HDR_LEN - RTE_ETHER_CRC_LEN /* Jumbo Frames of 9.5kb */
     },
     .txmode = {
-        .mq_mode = ETH_MQ_TX_NONE,
+        .mq_mode = RTE_ETH_MQ_TX_NONE,
     },
 };
 
@@ -91,7 +91,7 @@ int port_init(
 
     /* Configure multiqueue (Activate Receive Side Scaling on UDP/TCP fields) */
     if (rx_queues > 1) {
-        port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
+        port_conf.rxmode.mq_mode = RTE_ETH_MQ_RX_RSS;
         port_conf.rx_adv_conf.rss_conf.rss_key = NULL;
         port_conf.rx_adv_conf.rss_conf.rss_hf = dev_info.flow_type_rss_offloads;
     }
@@ -108,13 +108,11 @@ int port_init(
     }
 
     /* Enable jumbo frames */
-    port_conf.rxmode.max_rx_pkt_len = dev_info.max_mtu;
-    if (dev_info.rx_offload_capa & DEV_RX_OFFLOAD_JUMBO_FRAME)
-        port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME;
+    port_conf.rxmode.mtu = RTE_MIN(port_conf.rxmode.mtu, dev_info.max_mtu);
 
     /* Enable scatter gather */
-    if (dev_info.rx_offload_capa & DEV_RX_OFFLOAD_SCATTER)
-        port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_SCATTER;
+    if (dev_info.rx_offload_capa & RTE_ETH_RX_OFFLOAD_SCATTER)
+        port_conf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_SCATTER;
 
     /* Configure the Ethernet device. */
     retval = rte_eth_dev_configure(port, rx_queues, tx_queues, &port_conf);
@@ -184,14 +182,14 @@ int port_init(
     }
 
     if (flow_control) {
-        fc_conf.mode = RTE_FC_FULL;
+        fc_conf.mode = RTE_ETH_FC_FULL;
         fc_conf.pause_time = 65535;
         fc_conf.send_xon = 0;
         fc_conf.mac_ctrl_frame_fwd = 1;
         fc_conf.autoneg = 0;
     }
     else
-        fc_conf.mode = RTE_FC_NONE;
+        fc_conf.mode = RTE_ETH_FC_NONE;
 
     retval = rte_eth_dev_flow_ctrl_set(port, &fc_conf);
     if (retval) {
