@@ -76,6 +76,23 @@ wait_link_up(const struct capture_core_config* config, bool wait) {
     }
 }
 
+/* TS function from app/test-pmd/util.c */
+static inline rte_mbuf_timestamp_t
+get_timestamp(const struct rte_mbuf *mbuf)
+{
+	static int timestamp_dynfield_offset = -1;
+
+	if (timestamp_dynfield_offset < 0) {
+		timestamp_dynfield_offset = rte_mbuf_dynfield_lookup(
+				RTE_MBUF_DYNFIELD_TIMESTAMP_NAME, NULL);
+		if (timestamp_dynfield_offset < 0)
+			return 0;
+	}
+
+	return *RTE_MBUF_DYNFIELD(mbuf,
+			timestamp_dynfield_offset, rte_mbuf_timestamp_t *);
+}
+
 /*
  * Capture the traffic from the given port/queue tuple
  */
@@ -109,7 +126,7 @@ capture_core(const struct capture_core_config* config) {
     uint32_t packet_length;
 
     const uint16_t mw_timestamp = config->mw_timestamp;
-    struct timespec ts;
+    rte_mbuf_timestamp_t ts;
     unsigned char* trailer_base;
 
     const uint16_t disk_blk_size = config->disk_blk_size;
@@ -159,10 +176,6 @@ capture_core(const struct capture_core_config* config) {
 
         if (likely(nb_rx > 0)) {
 
-            if (!mw_timestamp) {
-                clock_gettime(CLOCK_REALTIME_COARSE, &ts);
-            }
-
             for (i = 0; i < nb_rx; i++) {
                 bufptr = bufs[i];
 
@@ -192,8 +205,9 @@ capture_core(const struct capture_core_config* config) {
                     header->seconds = ntohl(*(uint32_t*)trailer_base);
                     header->nanoseconds = ntohl(*(uint32_t*)(trailer_base + 4));
                 } else {
-                    header->seconds = (uint32_t)ts.tv_sec;
-                    header->nanoseconds = (uint32_t)ts.tv_nsec;
+                    ts = get_timestamp(bufptr);
+                    header->seconds = (uint32_t)(ts / NS_PER_S);
+                    header->nanoseconds = (uint32_t)(ts % NS_PER_S);
                 }
 
                 rte_pktmbuf_free(bufptr);

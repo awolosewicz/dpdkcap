@@ -115,6 +115,11 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
         port_conf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_SCATTER;
     }
 
+    /* Enable RX Timestamp */
+    if (dev_info.rx_offload_capa & RTE_ETH_RX_OFFLOAD_TIMESTAMP) {
+        port_conf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_TIMESTAMP;
+    }
+
     /* Configure the Ethernet device. */
     retval = rte_eth_dev_configure(port, rx_queues, tx_queues, &port_conf);
     if (retval) {
