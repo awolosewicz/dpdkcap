@@ -337,8 +337,8 @@ main(int argc, char* argv[]) {
         }
     }
 
-    char* tmp_path = strdup(args.output_file_template);
-    strcat(tmp_path, "_tmp_file");
+    char* tmp_path = calloc(OUTPUT_FILENAME_LENGTH, 1);
+    strcpy(tmp_path, args.output_file_template);
     unsigned int maj_dev = 0;
 
     int fd = open(tmp_path, O_CREAT | O_RDONLY, 0644);

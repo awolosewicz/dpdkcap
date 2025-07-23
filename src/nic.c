@@ -30,9 +30,9 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
     struct rte_eth_txconf txq_conf;
     struct rte_eth_fc_conf fc_conf;
     struct rte_eth_link link;
-    uint16_t socket, q, tx_queues = 0;
+    uint16_t q, tx_queues = 0;
     int retval, retry = 5;
-    int status = 0;
+    int socket, status = 0;
 
     if (flow_control) {
         tx_queues = rx_queues;
@@ -200,7 +200,7 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
     }
 
     retval = rte_eth_dev_flow_ctrl_set(port, &fc_conf);
-    if (retval) {
+    if (retval < 0 && retval != -ENOTSUP) {
         LOG_ERR("Cannot set flow control parameters for port: %d: %s\n", port, rte_strerror(-retval));
         return retval;
     }
