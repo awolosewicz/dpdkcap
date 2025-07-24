@@ -95,6 +95,11 @@ get_timestamp(const struct rte_mbuf *mbuf)
 			timestamp_dynfield_offset, rte_mbuf_timestamp_t *);
 }
 
+static inline uint64_t timespec64_to_ns(const struct timespec *ts)
+{
+	return ((uint64_t) ts->tv_sec * NS_PER_S) + ts->tv_nsec;
+}
+
 /*
  * Capture the traffic from the given port/queue tuple
  */
@@ -129,6 +134,7 @@ capture_core(const struct capture_core_config* config) {
 
     const uint16_t mw_timestamp = config->mw_timestamp;
     uint64_t ts_hw, ts_ns;
+    struct timespec timespec64;
     uint64_t hw_freq; /* Observed frequency in hz of the HW clock */
     uint64_t startup_ns;
     uint64_t startup_hw;
@@ -183,8 +189,9 @@ capture_core(const struct capture_core_config* config) {
             rte_exit(EXIT_FAILURE, "Error calibrating HW clock: %s", rte_strerror(retval));
         }
         hw_freq = t2 - t1;
-        clock_gettime(CLOCK_REALTIME, &startup_ns);
+        clock_gettime(CLOCK_REALTIME, &timespec64);
         rte_eth_read_clock(port, &startup_hw);
+        startup_ns = timespec64_to_ns(&timespec64);
     }
 
     /* Run until the application is quit or killed. */
