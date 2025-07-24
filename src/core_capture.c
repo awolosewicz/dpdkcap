@@ -1,8 +1,5 @@
 #include "core_capture.h"
 #include <rte_ethdev.h>
-#include <rte_ethdev_driver.h>
-#include <rte_pmd_mlx5.h>
-#include <mlx5_common.h>
 #include <infiniband/mlx5dv.h>
 
 struct ether_fc_frame {
@@ -131,11 +128,10 @@ capture_core(const struct capture_core_config* config) {
     uint32_t packet_length;
 
     const uint16_t mw_timestamp = config->mw_timestamp;
-    uint64_t ts;
-    struct rte_eth_dev *eth_dev;
-    struct mlx5_priv *priv;
-    struct ibv_context *ibv_ctx;
-    struct mlx5dv_clock_info clock_info;
+    uint64_t ts_hw, ts_ns;
+    uint64_t hw_freq; /* Observed frequency in hz of the HW clock */
+    uint64_t startup_ns;
+    uint64_t startup_hw;
     unsigned char* trailer_base;
 
     const uint16_t disk_blk_size = config->disk_blk_size;
@@ -155,10 +151,6 @@ capture_core(const struct capture_core_config* config) {
     config->stats->pbuf_free_ring = config->pbuf_free_ring;
 
     wait_link_up(config, true);
-
-    eth_dev = &rte_eth_devices[port];
-    priv = eth_dev->data->dev_private;
-    ibv_ctx = priv->sh->cdev->ctx;
 
     if (flow_control) {
         pause_frame = rte_pktmbuf_alloc(pause_mbuf_pool);
@@ -181,6 +173,20 @@ capture_core(const struct capture_core_config* config) {
                  rte_lcore_id());
     }
 
+    if (!mw_timestamp) {
+        uint64_t t1, t2;
+        int retval;
+        rte_eth_read_clock(port, &t1);
+        rte_delay_ms(1000);
+        retval = rte_eth_read_clock(port, &t2);
+        if (retval < 0) {
+            rte_exit(EXIT_FAILURE, "Error calibrating HW clock: %s", rte_strerror(retval));
+        }
+        hw_freq = t2 - t1;
+        clock_gettime(CLOCK_REALTIME, &startup_ns);
+        rte_eth_read_clock(port, &startup_hw);
+    }
+
     /* Run until the application is quit or killed. */
 
     while (likely(!(*stop_condition))) {
@@ -189,8 +195,6 @@ capture_core(const struct capture_core_config* config) {
         nb_rx = rte_eth_rx_burst(port, queue, bufs, burst_size);
 
         if (likely(nb_rx > 0)) {
-
-            mlx5dv_get_clock_info(ibv_ctx, &clock_info);
 
             for (i = 0; i < nb_rx; i++) {
                 bufptr = bufs[i];
@@ -221,9 +225,10 @@ capture_core(const struct capture_core_config* config) {
                     header->seconds = ntohl(*(uint32_t*)trailer_base);
                     header->nanoseconds = ntohl(*(uint32_t*)(trailer_base + 4));
                 } else {
-                    ts = mlx5dv_ts_to_ns(&clock_info, get_timestamp(bufptr));
-                    header->seconds = (uint32_t)(ts / NS_PER_S);
-                    header->nanoseconds = (uint32_t)(ts % NS_PER_S);
+                    ts_hw = get_timestamp(bufptr);
+                    ts_ns = (ts_hw / hw_freq) * NS_PER_S;
+                    header->seconds = (uint32_t)(ts_ns / NS_PER_S);
+                    header->nanoseconds = (uint32_t)(ts_ns % NS_PER_S);
                 }
 
                 rte_pktmbuf_free(bufptr);
