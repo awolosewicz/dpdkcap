@@ -1,4 +1,6 @@
 #include "core_capture.h"
+#include <ethdev_driver.h>
+#include <infiniband/mlx5dv.h>
 
 struct ether_fc_frame {
     uint16_t opcode;
@@ -126,7 +128,11 @@ capture_core(const struct capture_core_config* config) {
     uint32_t packet_length;
 
     const uint16_t mw_timestamp = config->mw_timestamp;
-    rte_mbuf_timestamp_t ts;
+    uint64_t ts;
+    struct rte_eth_dev *eth_dev;
+    struct mlx5_priv *priv;
+    struct ibv_context *ibv_ctx;
+    struct mlx5dv_clock_info clock_info;
     unsigned char* trailer_base;
 
     const uint16_t disk_blk_size = config->disk_blk_size;
@@ -146,6 +152,10 @@ capture_core(const struct capture_core_config* config) {
     config->stats->pbuf_free_ring = config->pbuf_free_ring;
 
     wait_link_up(config, true);
+
+    eth_dev = &rte_eth_devices[port];
+    priv = eth_dev->data->dev_private;
+    ibv_ctx = priv->sh->cdev->ctx;
 
     if (flow_control) {
         pause_frame = rte_pktmbuf_alloc(pause_mbuf_pool);
@@ -169,12 +179,17 @@ capture_core(const struct capture_core_config* config) {
     }
 
     /* Run until the application is quit or killed. */
+
+    ibv_ctx = 
+
     while (likely(!(*stop_condition))) {
 
         /* Retrieve packets and put them into the ring */
         nb_rx = rte_eth_rx_burst(port, queue, bufs, burst_size);
 
         if (likely(nb_rx > 0)) {
+
+            mlx5dv_get_clock_info(ibv_ctx, &clock_info);
 
             for (i = 0; i < nb_rx; i++) {
                 bufptr = bufs[i];
@@ -205,7 +220,7 @@ capture_core(const struct capture_core_config* config) {
                     header->seconds = ntohl(*(uint32_t*)trailer_base);
                     header->nanoseconds = ntohl(*(uint32_t*)(trailer_base + 4));
                 } else {
-                    ts = get_timestamp(bufptr);
+                    ts = mlx5dv_ts_to_ns(&clock_info, get_timestamp(bufptr));
                     header->seconds = (uint32_t)(ts / NS_PER_S);
                     header->nanoseconds = (uint32_t)(ts % NS_PER_S);
                 }
