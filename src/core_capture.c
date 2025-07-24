@@ -233,9 +233,8 @@ capture_core(const struct capture_core_config* config) {
                     header->nanoseconds = ntohl(*(uint32_t*)(trailer_base + 4));
                 } else {
                     ts_hw = get_timestamp(bufptr);
-                    ts_ns = (ts_hw / hw_freq) * NS_PER_S;
-                    header->seconds = (uint32_t)(ts_ns / NS_PER_S);
-                    header->nanoseconds = (uint32_t)(ts_ns % NS_PER_S);
+                    header->seconds = (uint32_t)(ts_hw / hw_freq);
+                    header->nanoseconds = (uint32_t)(((ts_hw % hw_freq) * NS_PER_S) / hw_freq);
                 }
 
                 rte_pktmbuf_free(bufptr);
