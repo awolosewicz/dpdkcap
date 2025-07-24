@@ -1,5 +1,8 @@
 #include "core_capture.h"
-#include <ethdev_driver.h>
+#include <rte_ethdev.h>
+#include <rte_ethdev_driver.h>
+#include <rte_pmd_mlx5.h>
+#include <mlx5_common.h>
 #include <infiniband/mlx5dv.h>
 
 struct ether_fc_frame {
@@ -179,8 +182,6 @@ capture_core(const struct capture_core_config* config) {
     }
 
     /* Run until the application is quit or killed. */
-
-    ibv_ctx = 
 
     while (likely(!(*stop_condition))) {
 
