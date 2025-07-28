@@ -116,7 +116,7 @@ write_core(const struct write_core_config* config) {
 
     while (1) {
         /* Stop condition */
-        if (unlikely(stop > 9999999)) {
+        if (unlikely(stop > 99999999)) {
             break;
         }
 

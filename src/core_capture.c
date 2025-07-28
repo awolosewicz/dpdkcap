@@ -136,7 +136,8 @@ capture_core(const struct capture_core_config* config) {
     uint64_t ts_hw, ts_ns;
     struct timespec timespec64;
     uint64_t hw_freq; /* Observed frequency in hz of the HW clock */
-    uint64_t startup_ns;
+    uint64_t startup_ts;
+    uint32_t startup_s, startup_ns;
     uint64_t startup_hw;
     unsigned char* trailer_base;
 
@@ -191,7 +192,9 @@ capture_core(const struct capture_core_config* config) {
         hw_freq = t2 - t1;
         clock_gettime(CLOCK_REALTIME, &timespec64);
         rte_eth_read_clock(port, &startup_hw);
-        startup_ns = timespec64_to_ns(&timespec64);
+        startup_ts = timespec64_to_ns(&timespec64);
+        startup_s = (uint32_t)(startup_ts / NS_PER_S);
+        startup_ns = (uint32_t)(startup_ts % NS_PER_S);
     }
 
     /* Run until the application is quit or killed. */
@@ -233,8 +236,10 @@ capture_core(const struct capture_core_config* config) {
                     header->nanoseconds = ntohl(*(uint32_t*)(trailer_base + 4));
                 } else {
                     ts_hw = get_timestamp(bufptr);
-                    header->seconds = (uint32_t)(ts_hw / hw_freq);
-                    header->nanoseconds = (uint32_t)(((ts_hw % hw_freq) * NS_PER_S) / hw_freq);
+                    header->seconds = (uint32_t)(ts_hw / hw_freq) + startup_s;
+                    header->nanoseconds = (uint32_t)(((ts_hw % hw_freq) * NS_PER_S) / hw_freq) + startup_ns;
+                    // printf("HW Freq %lu: HW timestamp %lu, seconds %u, nanoseconds %u\n",
+                    //        hw_freq, ts_hw, header->seconds, header->nanoseconds);
                 }
 
                 rte_pktmbuf_free(bufptr);
