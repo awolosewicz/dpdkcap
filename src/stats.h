@@ -11,7 +11,7 @@
 #include "core_write.h"
 #include "utils.h"
 
-#define STATS_PERIOD_MS 500
+#define STATS_PERIOD_MS 0.5
 #define ROTATING_CHAR   "-\\|/"
 
 struct stats_data {

@@ -60,18 +60,31 @@ static struct rte_timer stats_timer;
 void
 start_stats_display(struct stats_data* data, bool volatile* stop_condition) {
     //Initialize timers
-    rte_timer_subsystem_init();
+    int ret = 0;
+    LOG_INFO("Starting stats display on core %d\n", rte_lcore_id());
+    ret = rte_timer_subsystem_init();
+    if (ret < 0) {
+        LOG_ERR("Failed to initialize timer subsystem: %s\n", rte_strerror(-ret));
+        return;
+    }
     rte_timer_init(&(stats_timer));
 
     //Timer launch
-    rte_timer_reset(&(stats_timer), rte_get_timer_hz() * STATS_PERIOD_MS, PERIODICAL, rte_lcore_id(),
+    ret = rte_timer_reset(&(stats_timer), rte_get_timer_hz() * STATS_PERIOD_MS, PERIODICAL, rte_lcore_id(),
                     (void*)print_stats, data);
+    if (ret < 0) {
+        LOG_ERR("Failed to reset timer: %s\n", rte_strerror(-ret));
+        return;
+    }
+    LOG_INFO("Timer hz: %lu\n", rte_get_timer_hz());
 
     //Wait for ctrl+c
     while (likely(!(*stop_condition))) {
         rte_timer_manage();
         rte_delay_us(1000000 * rte_timer_next_ticks() / rte_get_timer_hz());
     }
+
+    LOG_INFO("Stopping stats display on core %d\n", rte_lcore_id());
 
     rte_timer_stop(&(stats_timer));
 }

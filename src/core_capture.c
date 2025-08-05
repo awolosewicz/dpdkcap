@@ -181,23 +181,34 @@ capture_core(const struct capture_core_config* config) {
     }
 
     if (!mw_timestamp) {
-        uint64_t t1, t2;
+        uint64_t t1 = 0, t2 = 0;
         int retval;
         rte_eth_read_clock(port, &t1);
         rte_delay_ms(1000);
         retval = rte_eth_read_clock(port, &t2);
         if (retval < 0) {
-            rte_exit(EXIT_FAILURE, "Error calibrating HW clock: %s", rte_strerror(retval));
+            printf("Error calibrating HW clock: %s, t1: %lu, t2: %lu\n", rte_strerror(retval), t1, t2);
+            hw_freq = NS_PER_S;
+            clock_gettime(CLOCK_REALTIME, &timespec64);
+            startup_hw = 0;
+            startup_ts = timespec64_to_ns(&timespec64);
+            startup_s = 0;
+            startup_ns = 0;
+
         }
-        hw_freq = t2 - t1;
-        clock_gettime(CLOCK_REALTIME, &timespec64);
-        rte_eth_read_clock(port, &startup_hw);
-        startup_ts = timespec64_to_ns(&timespec64);
-        startup_s = (uint32_t)(startup_ts / NS_PER_S);
-        startup_ns = (uint32_t)(startup_ts % NS_PER_S);
+        else {
+            hw_freq = t2 - t1;
+            clock_gettime(CLOCK_REALTIME, &timespec64);
+            rte_eth_read_clock(port, &startup_hw);
+            startup_ts = timespec64_to_ns(&timespec64);
+            startup_s = (uint32_t)(startup_ts / NS_PER_S);
+            startup_ns = (uint32_t)(startup_ts % NS_PER_S);
+        }
     }
 
     /* Run until the application is quit or killed. */
+
+    uint64_t total_captured = 0;
 
     while (likely(!(*stop_condition))) {
 
@@ -214,8 +225,8 @@ capture_core(const struct capture_core_config* config) {
 
                 packet_length = bufptr->pkt_len;
 
-                header->packet_length = packet_length;
-                header->packet_length_wire = packet_length;
+                header->packet_length = 16;
+                header->packet_length_wire = 16;
 
                 if (unlikely(bufptr->nb_segs > 1)) {
                     do {
@@ -226,8 +237,8 @@ capture_core(const struct capture_core_config* config) {
                     /* Reset the pointer to the original mbuf for freeing */
                     bufptr = bufs[i];
                 } else {
-                    rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod(bufptr, void*), packet_length);
-                    buffer->offset += packet_length;
+                    rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod_offset(bufptr, void*, packet_length-16), 16);
+                    buffer->offset += 16;
                 }
 
                 if (mw_timestamp) {
@@ -249,12 +260,14 @@ capture_core(const struct capture_core_config* config) {
             config->stats->packets += nb_rx;
             config->stats->buffer_packets += nb_rx;
             flush = 0;
+            total_captured += nb_rx;
         } else {
             flush++;
         }
 
         /* Enqueue buffer to be flushed if full and get a new one */
         if (buffer->offset > watermark || (flush > 9999999 && buffer->offset > disk_blk_size)) {
+            printf("Buffer block, %lu, flush: %d, packets: %lu\n", buffer->offset, flush, config->stats->buffer_packets);
             buffer->packets = config->stats->buffer_packets;
             overrun = buffer->offset % disk_blk_size;
             if (overrun) {

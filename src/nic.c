@@ -117,6 +117,7 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
 
     /* Enable RX Timestamp */
     if (dev_info.rx_offload_capa & RTE_ETH_RX_OFFLOAD_TIMESTAMP) {
+        printf("Enabling RX Timestamp for port %d\n", port);
         port_conf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_TIMESTAMP;
     }
 
@@ -168,6 +169,39 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
         }
     }
 
+    /* Enable RX in promiscuous mode for the Ethernet device. */
+    rte_eth_promiscuous_enable(port);
+
+    // /* Enable flow control */
+    // retval = rte_eth_dev_flow_ctrl_get(port, &fc_conf);
+    // if (retval) {
+    //     LOG_ERR("Cannot get flow control parameters for port: %d: %s\n", port, rte_strerror(-retval));
+    //     return retval;
+    // }
+
+    // if (flow_control) {
+    //     fc_conf.mode = RTE_ETH_FC_FULL;
+    //     fc_conf.pause_time = 65535;
+    //     fc_conf.send_xon = 0;
+    //     fc_conf.mac_ctrl_frame_fwd = 1;
+    //     fc_conf.autoneg = 0;
+    // } else {
+    //     fc_conf.mode = RTE_ETH_FC_NONE;
+    // }
+
+    // retval = rte_eth_dev_flow_ctrl_set(port, &fc_conf);
+    // if (retval < 0 && retval != -ENOTSUP) {
+    //     LOG_ERR("Cannot set flow control parameters for port: %d: %s\n", port, rte_strerror(-retval));
+    //     return retval;
+    // }
+
+    /* Start the port once everything is ready to capture */
+    retval = rte_eth_dev_start(port);
+    if (retval) {
+        LOG_ERR("Cannot start port: %d: %s\n", port, rte_strerror(-retval));
+        return retval;
+    }
+
     /* Get link status */
     do {
         status = rte_eth_link_get_nowait(port, &link);
@@ -175,41 +209,8 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
 
     // if still no link information, must be down
     if (!link.link_status) {
-        LOG_ERR("Cannot detect valid link for port %d, status: %s\n", port, rte_strerror(-status));
+        LOG_ERR("Cannot detect valid link for port %d, error: %s\n", port, rte_strerror(-status));
         return -ENOLINK;
-    }
-
-    /* Enable RX in promiscuous mode for the Ethernet device. */
-    rte_eth_promiscuous_enable(port);
-
-    /* Enable flow control */
-    retval = rte_eth_dev_flow_ctrl_get(port, &fc_conf);
-    if (retval) {
-        LOG_ERR("Cannot get flow control parameters for port: %d: %s\n", port, rte_strerror(-retval));
-        return retval;
-    }
-
-    if (flow_control) {
-        fc_conf.mode = RTE_ETH_FC_FULL;
-        fc_conf.pause_time = 65535;
-        fc_conf.send_xon = 0;
-        fc_conf.mac_ctrl_frame_fwd = 1;
-        fc_conf.autoneg = 0;
-    } else {
-        fc_conf.mode = RTE_ETH_FC_NONE;
-    }
-
-    retval = rte_eth_dev_flow_ctrl_set(port, &fc_conf);
-    if (retval < 0 && retval != -ENOTSUP) {
-        LOG_ERR("Cannot set flow control parameters for port: %d: %s\n", port, rte_strerror(-retval));
-        return retval;
-    }
-
-    /* Start the port once everything is ready to capture */
-    retval = rte_eth_dev_start(port);
-    if (retval) {
-        LOG_ERR("Cannot start port: %d: %s\n", port, rte_strerror(-retval));
-        return retval;
     }
 
     return 0;

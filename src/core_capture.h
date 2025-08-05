@@ -26,14 +26,14 @@ struct capture_core_config {
     uint16_t mw_timestamp;
     bool volatile* stop_condition;
     struct capture_core_stats* stats;
-    uint32_t watermark;
+    uint64_t watermark;
 } __rte_cache_aligned;
 
 /* Statistics structure */
 struct capture_core_stats {
     uint16_t core_id;
     uint64_t packets;        //Packets successfully received
-    uint32_t buffer_packets; //Packets in one pcap buffer
+    uint64_t buffer_packets; //Packets in one pcap buffer
     uint64_t pause_frames;   // Pause frames sent for flow control
     struct rte_ring* pbuf_free_ring;
 } __rte_cache_aligned;

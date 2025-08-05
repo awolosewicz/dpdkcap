@@ -116,7 +116,7 @@ struct arguments {
     uint32_t nb_mbufs;
     uint32_t mbuf_len;
     uint32_t nb_pbufs;
-    uint32_t pbuf_len;
+    uint64_t pbuf_len;
     uint64_t portmask;
     char* output_file_template;
     char* log_file;
@@ -419,13 +419,13 @@ next:
     uint16_t mbuf_len = args.mbuf_len;
     uint32_t nb_mbufs = rte_align32pow2(args.nb_mbufs);
     uint32_t nb_pbufs = rte_align32pow2(args.nb_pbufs);
-    uint32_t pbuf_len = rte_align32pow2(args.pbuf_len);
+    uint64_t pbuf_len = rte_align64pow2(args.pbuf_len);
     uint32_t rx_burst_len = mbuf_len * args.burst_size;
-    uint32_t watermark = pbuf_len - rx_burst_len;
+    uint64_t watermark = pbuf_len - rx_burst_len;
 
     LOG_INFO("Cores/Queues Per Port: %d Burst Size: %d\n", nb_queues_per_port, args.burst_size);
-    LOG_INFO("MBufs: Num: %d Len: %d B  PBufs: Num: %d Len: %d B\n", nb_mbufs, mbuf_len, nb_pbufs, pbuf_len);
-    LOG_INFO("RX Burst Len: %d Watermark: %d\n", rx_burst_len, watermark);
+    LOG_INFO("MBufs: Num: %d Len: %d B  PBufs: Num: %d Len: %lu B\n", nb_mbufs, mbuf_len, nb_pbufs, pbuf_len);
+    LOG_INFO("RX Burst Len: %d Watermark: %lu\n", rx_burst_len, watermark);
     LOG_INFO("Flow control: %s Pause Burst Size: %d\n", args.flow_control ? "ON" : "OFF", args.pause_burst_size);
     LOG_INFO("Use MetaWatch trailer timestamps: %s\n", args.mw_timestamp ? "ON" : "OFF");
     LOG_INFO("Disk (%d:0) block size = %d\n", maj_dev, args.disk_blk_size);

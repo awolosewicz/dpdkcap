@@ -21,8 +21,8 @@ struct pcap_packet_header {
 } __rte_packed;
 
 struct pcap_buffer {
-    uint32_t offset;
-    uint32_t packets;
+    uint64_t offset;
+    uint64_t packets;
     unsigned char* buffer;
 } __rte_cache_aligned;
 
