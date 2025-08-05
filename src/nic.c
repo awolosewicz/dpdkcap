@@ -8,7 +8,6 @@ static const struct rte_eth_conf port_conf_default = {
     .rxmode =
         {
             .mq_mode = RTE_ETH_MQ_RX_NONE,
-            .mtu = 0x2600 - RTE_ETHER_HDR_LEN - RTE_ETHER_CRC_LEN /* Jumbo Frames of 9.5kb */
         },
     .txmode =
         {
