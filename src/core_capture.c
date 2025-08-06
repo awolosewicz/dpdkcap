@@ -247,8 +247,8 @@ capture_core(const struct capture_core_config* config) {
                     header->nanoseconds = ntohl(*(uint32_t*)(trailer_base + 4));
                 } else {
                     ts_hw = get_timestamp(bufptr);
-                    header->seconds = (uint32_t)(ts_hw / hw_freq) + startup_s;
-                    header->nanoseconds = (uint32_t)(((ts_hw % hw_freq) * NS_PER_S) / hw_freq) + startup_ns;
+                    header->seconds = (uint32_t)((ts_hw - startup_hw) / hw_freq) + startup_s;
+                    header->nanoseconds = (uint32_t)((((ts_hw - startup_hw) % hw_freq) * NS_PER_S) / hw_freq) + startup_ns;
                     // printf("HW Freq %lu: HW timestamp %lu, seconds %u, nanoseconds %u\n",
                     //        hw_freq, ts_hw, header->seconds, header->nanoseconds);
                 }
