@@ -237,7 +237,7 @@ capture_core(const struct capture_core_config* config) {
                     /* Reset the pointer to the original mbuf for freeing */
                     bufptr = bufs[i];
                 } else {
-                    rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod_offset(bufptr, void*, packet_length-16), 16);
+                    rte_mov16(buffer->buffer + buffer->offset, rte_pktmbuf_mtod_offset(bufptr, void*, packet_length-16));
                     buffer->offset += 16;
                 }
 
