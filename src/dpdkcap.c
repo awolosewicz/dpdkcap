@@ -275,6 +275,7 @@ main(int argc, char* argv[]) {
     struct pcap_buffer** buffers;
     struct rte_mempool** rx_pools;
     struct rte_mempool** tx_pools;
+    bool* capture_done_flags;
 
     uint16_t port;
     unsigned int lcoreid_list[MAX_LCORES];
@@ -449,6 +450,9 @@ next:
     capture_core_stats = calloc(nb_queues, sizeof(struct capture_core_stats));
     write_core_stats = calloc(nb_queues, sizeof(struct write_core_stats));
 
+    /* One flag per queue, raised by the capture core and read by its writer */
+    capture_done_flags = calloc(nb_queues, sizeof(bool));
+
     rx_pools = calloc(nb_queues, sizeof(struct mempool*));
     tx_pools = calloc(nb_queues, sizeof(struct mempool*));
 
@@ -538,6 +542,7 @@ next:
             config->pbuf_full_ring = pbuf_full_rings[k];
             config->pause_mbuf_pool = tx_pools[k];
             config->stop_condition = &stop_condition;
+            config->capture_done = &capture_done_flags[k];
             config->burst_size = args.burst_size;
             config->pause_burst_size = args.pause_burst_size;
             config->disk_blk_size = args.disk_blk_size;
@@ -573,6 +578,7 @@ next:
             config->pbuf_free_ring = pbuf_free_rings[k];
             config->pbuf_full_ring = pbuf_full_rings[k];
             config->stop_condition = &stop_condition;
+            config->capture_done = &capture_done_flags[k];
             config->burst_size = nb_pbufs;
             config->disk_blk_size = args.disk_blk_size;
             config->snaplen = args.snaplen;
@@ -626,6 +632,7 @@ next:
     //Finalize
     free(write_core_stats);
     free(capture_core_stats);
+    free(capture_done_flags);
     free(write_core_configs);
     free(capture_core_configs);
     free(rx_pools);

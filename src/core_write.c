@@ -69,6 +69,7 @@ write_core(const struct write_core_config* config) {
     unsigned dev_socket_id;
 
     volatile bool* stop_condition = config->stop_condition;
+    volatile bool* capture_done = config->capture_done;
 
     const uint16_t port = config->port;
 
@@ -85,7 +86,6 @@ write_core(const struct write_core_config* config) {
     struct iovec iov[burst_size];
 
     char file_name[OUTPUT_FILENAME_LENGTH];
-    unsigned int stop = 0;
     uint64_t file_size = 0;
 
     LOG_INFO("Core %d is writing using file template: %s.\n", rte_lcore_id(), config->output_file_template);
@@ -115,18 +115,12 @@ write_core(const struct write_core_config* config) {
     }
 
     while (1) {
-        /* Stop condition */
-        if (unlikely(stop > 99999999)) {
-            break;
-        }
-
-        if (unlikely(*stop_condition)) {
-            stop++;
-        }
-
         nb_bufs = rte_ring_sc_dequeue_burst(pbuf_full_ring, (void**)buffers, burst_size, NULL);
 
         if (unlikely(nb_bufs < 1)) {
+            if (unlikely(*capture_done) && rte_ring_empty(pbuf_full_ring)) {
+                break;
+            }
             continue;
         }
 

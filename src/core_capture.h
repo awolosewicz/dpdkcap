@@ -25,6 +25,8 @@ struct capture_core_config {
     uint16_t flow_control;
     uint16_t mw_timestamp;
     bool volatile* stop_condition;
+    /* Raised for the paired write core once the last buffer is enqueued */
+    bool volatile* capture_done;
     struct capture_core_stats* stats;
     uint64_t watermark;
 } __rte_cache_aligned;

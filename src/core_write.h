@@ -23,6 +23,8 @@ struct write_core_config {
     uint16_t snaplen;
     uint16_t disk_blk_size;
     bool volatile* stop_condition;
+    /* Set by the paired capture core once it has enqueued its last buffer */
+    bool volatile* capture_done;
     struct write_core_stats* stats;
     char* output_file_template;
 } __rte_cache_aligned;

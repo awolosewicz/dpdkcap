@@ -374,6 +374,9 @@ capture_core(const struct capture_core_config* config) {
         rte_ring_sp_enqueue_bulk(pbuf_full_ring, (void**)&buffer, 1, NULL);
     }
 
+    /* Release the write core only after the last buffer is on the ring */
+    *config->capture_done = true;
+
     LOG_INFO("Closed capture core %d (port %d)\n", rte_lcore_id(), port);
 
     return 0;
