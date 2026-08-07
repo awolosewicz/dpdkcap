@@ -247,10 +247,10 @@ capture_core(const struct capture_core_config* config) {
                     header->nanoseconds = ntohl(*(uint32_t*)(trailer_base + 4));
                 } else {
                     ts_hw = get_timestamp(bufptr);
-                    header->seconds = (uint32_t)((ts_hw - startup_hw) / hw_freq) + startup_s;
-                    header->nanoseconds = (uint32_t)((((ts_hw - startup_hw) % hw_freq) * NS_PER_S) / hw_freq) + startup_ns;
-                    // printf("HW Freq %lu: HW timestamp %lu, seconds %u, nanoseconds %u\n",
-                    //        hw_freq, ts_hw, header->seconds, header->nanoseconds);
+                    uint64_t delta = ts_hw - startup_hw;
+                    uint64_t ns = (uint64_t)startup_ns + ((delta % hw_freq) * NS_PER_S) / hw_freq;
+                    header->seconds = (uint32_t)(delta / hw_freq) + startup_s + (uint32_t)(ns / NS_PER_S);
+                    header->nanoseconds = (uint32_t)(ns % NS_PER_S);
                 }
 
                 rte_pktmbuf_free(bufptr);
