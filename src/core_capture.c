@@ -181,28 +181,42 @@ capture_core(const struct capture_core_config* config) {
     }
 
     if (!mw_timestamp) {
-        uint64_t t1 = 0, t2 = 0;
+        uint64_t t1 = 0, t2 = 0, w1, w2;
         int retval;
-        rte_eth_read_clock(port, &t1);
+
+        /*
+         * Bracket the device clock reads with wall clock reads so the
+         * frequency estimate uses the measured elapsed time rather than
+         * assuming the delay was exactly one second
+         */
+        clock_gettime(CLOCK_REALTIME, &timespec64);
+        w1 = timespec64_to_ns(&timespec64);
+        retval = rte_eth_read_clock(port, &t1);
         rte_delay_ms(1000);
-        retval = rte_eth_read_clock(port, &t2);
+        if (retval == 0) {
+            retval = rte_eth_read_clock(port, &t2);
+        }
+        clock_gettime(CLOCK_REALTIME, &timespec64);
+        w2 = timespec64_to_ns(&timespec64);
+
         if (retval < 0) {
-            printf("Error calibrating HW clock: %s, t1: %lu, t2: %lu\n", rte_strerror(retval), t1, t2);
-            hw_freq = NS_PER_S;
-            clock_gettime(CLOCK_REALTIME, &timespec64);
+            LOG_WARN("Cannot read device clock on port %u (%s); "
+                     "falling back to software timestamps\n",
+                     port, rte_strerror(-retval));
+            hw_freq = 0;
             startup_hw = 0;
-            startup_ts = timespec64_to_ns(&timespec64);
             startup_s = 0;
             startup_ns = 0;
-
         }
         else {
-            hw_freq = t2 - t1;
-            clock_gettime(CLOCK_REALTIME, &timespec64);
+            hw_freq = ((t2 - t1) * NS_PER_S) / (w2 - w1);
             rte_eth_read_clock(port, &startup_hw);
+            clock_gettime(CLOCK_REALTIME, &timespec64);
             startup_ts = timespec64_to_ns(&timespec64);
             startup_s = (uint32_t)(startup_ts / NS_PER_S);
             startup_ns = (uint32_t)(startup_ts % NS_PER_S);
+            LOG_INFO("Port %u device clock calibrated at %lu Hz over %lu ns\n",
+                     port, hw_freq, w2 - w1);
         }
     }
 
