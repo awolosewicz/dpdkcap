@@ -135,11 +135,13 @@ capture_core(const struct capture_core_config* config) {
     const uint16_t mw_timestamp = config->mw_timestamp;
     uint64_t ts_hw, ts_ns;
     struct timespec timespec64;
-    uint64_t hw_freq; /* Observed frequency in hz of the HW clock */
+    uint64_t hw_freq = 0; /* Observed frequency in hz of the HW clock */
     uint64_t startup_ts;
     uint32_t startup_s, startup_ns;
     uint64_t startup_hw;
     unsigned char* trailer_base;
+    uint64_t burst_ns = 0;
+    bool ts_checked = false, ts_hw_missing = false;
 
     const uint16_t disk_blk_size = config->disk_blk_size;
     uint16_t i, nb_rx;
@@ -220,6 +222,16 @@ capture_core(const struct capture_core_config* config) {
         }
     }
 
+    /*
+     * Without a usable device clock the only remaining source of arrival
+     * time is the host clock, sampled once per burst
+     */
+    const bool sw_timestamp = !mw_timestamp && hw_freq == 0;
+
+    if (sw_timestamp) {
+        LOG_WARN("Port %u capture on core %u is using software timestamps\n", port, rte_lcore_id());
+    }
+
     /* Run until the application is quit or killed. */
 
     uint64_t total_captured = 0;
@@ -230,6 +242,11 @@ capture_core(const struct capture_core_config* config) {
         nb_rx = rte_eth_rx_burst(port, queue, bufs, burst_size);
 
         if (likely(nb_rx > 0)) {
+
+            if (unlikely(sw_timestamp || ts_hw_missing)) {
+                clock_gettime(CLOCK_REALTIME, &timespec64);
+                burst_ns = timespec64_to_ns(&timespec64);
+            }
 
             for (i = 0; i < nb_rx; i++) {
                 bufptr = bufs[i];
@@ -259,12 +276,34 @@ capture_core(const struct capture_core_config* config) {
                     trailer_base = buffer->buffer + buffer->offset - 12;
                     header->seconds = ntohl(*(uint32_t*)trailer_base);
                     header->nanoseconds = ntohl(*(uint32_t*)(trailer_base + 4));
+                } else if (unlikely(sw_timestamp || ts_hw_missing)) {
+                    header->seconds = (uint32_t)(burst_ns / NS_PER_S);
+                    header->nanoseconds = (uint32_t)(burst_ns % NS_PER_S);
                 } else {
                     ts_hw = get_timestamp(bufptr);
-                    uint64_t delta = ts_hw - startup_hw;
-                    uint64_t ns = (uint64_t)startup_ns + ((delta % hw_freq) * NS_PER_S) / hw_freq;
-                    header->seconds = (uint32_t)(delta / hw_freq) + startup_s + (uint32_t)(ns / NS_PER_S);
-                    header->nanoseconds = (uint32_t)(ns % NS_PER_S);
+
+                    /* A zero on the first packet means the dynfield is absent */
+                    if (unlikely(!ts_checked)) {
+                        ts_checked = true;
+                        ts_hw_missing = (ts_hw == 0);
+                        if (ts_hw_missing) {
+                            LOG_WARN("Port %u delivers no HW timestamps; "
+                                     "using software timestamps\n",
+                                     port);
+                            clock_gettime(CLOCK_REALTIME, &timespec64);
+                            burst_ns = timespec64_to_ns(&timespec64);
+                        }
+                    }
+
+                    if (unlikely(ts_hw_missing)) {
+                        header->seconds = (uint32_t)(burst_ns / NS_PER_S);
+                        header->nanoseconds = (uint32_t)(burst_ns % NS_PER_S);
+                    } else {
+                        uint64_t delta = ts_hw - startup_hw;
+                        uint64_t ns = (uint64_t)startup_ns + ((delta % hw_freq) * NS_PER_S) / hw_freq;
+                        header->seconds = (uint32_t)(delta / hw_freq) + startup_s + (uint32_t)(ns / NS_PER_S);
+                        header->nanoseconds = (uint32_t)(ns % NS_PER_S);
+                    }
                 }
 
                 rte_pktmbuf_free(bufptr);

@@ -118,6 +118,10 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
     if (dev_info.rx_offload_capa & RTE_ETH_RX_OFFLOAD_TIMESTAMP) {
         printf("Enabling RX Timestamp for port %d\n", port);
         port_conf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_TIMESTAMP;
+    } else {
+        LOG_WARN("Port %d has no RX timestamp offload; capture falls back "
+                 "to software timestamps\n",
+                 port);
     }
 
     /* Configure the Ethernet device. */
