@@ -26,7 +26,7 @@
 #define PAUSE_BURST_SIZE              128
 #define PAUSE_MBUF_POOL_SIZE          8192
 
-#define PCAP_SNAPLEN_DEFAULT          65535
+#define PCAP_SNAPLEN_DEFAULT          16
 
 #define PCAP_BUF_LEN_DEFAULT          1024 * 1024 * 128
 #define NUM_PBUFS_DEFAULT             4

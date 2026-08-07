@@ -257,16 +257,28 @@ capture_core(const struct capture_core_config* config) {
                 packet_length = bufptr->pkt_len;
 
                 header->packet_length = 16;
-                header->packet_length_wire = 16;
+                header->packet_length_wire = packet_length;
 
                 if (unlikely(bufptr->nb_segs > 1)) {
-                    do {
-                        rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod(bufptr, void*), bufptr->data_len);
-                        buffer->offset += bufptr->data_len;
-                        bufptr = bufptr->next;
-                    } while (bufptr);
-                    /* Reset the pointer to the original mbuf for freeing */
-                    bufptr = bufs[i];
+                    /*
+                     * Walk to the tail 16 bytes, which may straddle the
+                     * final segment boundary
+                     */
+                    uint32_t remaining = 16;
+                    uint32_t skip = packet_length - 16;
+                    struct rte_mbuf* seg = bufptr;
+                    while (skip >= seg->data_len) {
+                        skip -= seg->data_len;
+                        seg = seg->next;
+                    }
+                    while (remaining > 0) {
+                        uint32_t take = RTE_MIN(remaining, seg->data_len - skip);
+                        rte_memcpy(buffer->buffer + buffer->offset, rte_pktmbuf_mtod_offset(seg, void*, skip), take);
+                        buffer->offset += take;
+                        remaining -= take;
+                        skip = 0;
+                        seg = seg->next;
+                    }
                 } else {
                     rte_mov16(buffer->buffer + buffer->offset, rte_pktmbuf_mtod_offset(bufptr, void*, packet_length-16));
                     buffer->offset += 16;
