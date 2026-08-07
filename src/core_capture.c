@@ -332,7 +332,6 @@ capture_core(const struct capture_core_config* config) {
 
         /* Enqueue buffer to be flushed if full and get a new one */
         if (buffer->offset > watermark || (flush > 9999999 && buffer->offset > disk_blk_size)) {
-            printf("Buffer block, %lu, flush: %d, packets: %lu\n", buffer->offset, flush, config->stats->buffer_packets);
             buffer->packets = config->stats->buffer_packets;
             overrun = buffer->offset % disk_blk_size;
             if (overrun) {
