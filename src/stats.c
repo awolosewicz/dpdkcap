@@ -10,7 +10,7 @@ print_stats(__attribute__((unused)) struct rte_timer* timer, struct stats_data* 
 
     uint64_t total_packets = 0;
     uint64_t total_bytes = 0;
-    unsigned int i, j;
+    unsigned int i;
 
     nb_stat_update++;
 
@@ -44,11 +44,13 @@ print_stats(__attribute__((unused)) struct rte_timer* timer, struct stats_data* 
                port_stats.ipackets, bytes_format(port_stats.ibytes),
                port_stats.ipackets ? (int)((float)port_stats.ibytes / (float)port_stats.ipackets) : 0,
                port_stats.ierrors, port_stats.imissed, port_stats.rx_nombuf);
+#ifdef RTE_ETHDEV_QUEUE_STAT_CNTRS
         printf("Per queue:\n");
-        for (j = 0; j < data->nb_queues_per_port; j++) {
+        for (unsigned int j = 0; j < data->nb_queues_per_port; j++) {
             printf("  Queue %d RX: %lu RX-Error: %lu\n", j, port_stats.q_ipackets[j], port_stats.q_errors[j]);
         }
         printf("  (%d queues hidden)\n", RTE_ETHDEV_QUEUE_STAT_CNTRS - data->nb_queues_per_port);
+#endif
     }
 
     printf("===================================\n");
