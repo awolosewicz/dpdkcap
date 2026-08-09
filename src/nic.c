@@ -29,7 +29,9 @@ port_init(uint16_t port, const uint16_t rx_queues, unsigned int num_rxdesc, stru
     struct rte_eth_txconf txq_conf;
     struct rte_eth_fc_conf fc_conf;
     struct rte_eth_link link;
-    uint16_t q, tx_queues = 0;
+    /* mlx5 in DPDK 25.11 fails rte_eth_dev_start on a port with no TX queues,
+     * so an idle one is always configured. */
+    uint16_t q, tx_queues = 1;
     int retval, retry = 5;
     int socket, status = 0;
 
