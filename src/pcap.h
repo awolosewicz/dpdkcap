@@ -11,14 +11,14 @@ struct pcap_file_header {
     uint32_t sigfigs;       /* accuracy of timestamps */
     uint32_t snaplen;       /* max length of captured packets, in octets */
     uint32_t network;       /* data link type */
-} __rte_packed;
+} __attribute__((packed));
 
 struct pcap_packet_header {
     uint32_t seconds;
     uint32_t nanoseconds;
     uint32_t packet_length;
     uint32_t packet_length_wire;
-} __rte_packed;
+} __attribute__((packed));
 
 struct pcap_buffer {
     uint64_t offset;

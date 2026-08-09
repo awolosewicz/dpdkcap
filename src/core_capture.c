@@ -5,7 +5,7 @@
 struct ether_fc_frame {
     uint16_t opcode;
     uint16_t param;
-} __rte_packed;
+} __attribute__((packed));
 
 static inline void
 prepare_pause_frame(uint16_t port, struct rte_mbuf* mbuf) {
